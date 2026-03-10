@@ -1,0 +1,15 @@
+# frontend
+frontend/node_modules/
+frontend/android/build/
+frontend/android/.gradle/
+frontend/ios/build/
+frontend/.gradle/
+
+# backend
+backend/target/
+backend/uploads/
+backend/.idea/
+
+# 共通
+*.env
+*.log
