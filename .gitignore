@@ -10,6 +10,9 @@ backend/target/
 backend/uploads/
 backend/.idea/
 
-# 共通
+# 環境変数
+.env
 *.env
+
+# ログ
 *.log
