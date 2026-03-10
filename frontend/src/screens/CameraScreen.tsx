@@ -1,12 +1,16 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity,
-  ActivityIndicator, SafeAreaView,
+  ActivityIndicator, SafeAreaView, Alert,
 } from 'react-native';
 import {
   Camera, useCameraDevice, useCameraPermission,
 } from 'react-native-vision-camera';
 import { receiptStore } from '../store/receiptStore';
+
+// ★ 本番APIのURL
+const API_BASE_URL = 'https://receiptapp-api-service-production.up.railway.app';
+const USER_ID = 'test-user-001';
 
 interface Props {
   onNavigateToReview: () => void;
@@ -27,16 +31,67 @@ export default function CameraScreen({ onNavigateToReview }: Props) {
     if (!camera.current || isTakingPhoto) return;
     try {
       setIsTakingPhoto(true);
+
+      // ① 撮影
       const photo = await camera.current.takePhoto({ flash: 'auto' });
 
-      // ストアに追加
-      receiptStore.addReceipt(photo.path);
+      // ② ストアに追加（pending状態）
+      const receipt = receiptStore.addReceipt(photo.path);
       setCapturedCount(prev => prev + 1);
+
+      // ③ バックグラウンドでアップロード＋解析
+      uploadAndAnalyze(receipt.id, photo.path);
 
     } catch (error) {
       console.error('撮影エラー:', error);
     } finally {
       setIsTakingPhoto(false);
+    }
+  };
+
+  const uploadAndAnalyze = async (localId: string, imagePath: string) => {
+    try {
+      // ステータスを「解析中」に更新
+      receiptStore.updateReceipt(localId, { status: 'analyzing' });
+
+      // ④ アップロード
+      const formData = new FormData();
+      formData.append('userId', USER_ID);
+      formData.append('image', {
+        uri: `file://${imagePath}`,
+        type: 'image/jpeg',
+        name: 'receipt.jpg',
+      } as any);
+
+      const uploadRes = await fetch(`${API_BASE_URL}/api/receipts/upload`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!uploadRes.ok) throw new Error(`Upload failed: ${uploadRes.status}`);
+      const uploadData = await uploadRes.json();
+      const serverId = uploadData.id;
+
+      // ⑤ OCR解析
+      const analyzeRes = await fetch(
+        `${API_BASE_URL}/api/receipts/${serverId}/analyze`,
+        { method: 'POST' }
+      );
+
+      if (!analyzeRes.ok) throw new Error(`Analyze failed: ${analyzeRes.status}`);
+      const analyzeData = await analyzeRes.json();
+
+      // ⑥ 結果をストアに反映
+      receiptStore.updateReceipt(localId, {
+        status: 'done',
+        storeName: analyzeData.storeName ?? '取得失敗',
+        date: analyzeData.receiptDate ?? null,
+        amount: analyzeData.amount ?? null,
+      });
+
+    } catch (error) {
+      console.error('解析エラー:', error);
+      receiptStore.updateReceipt(localId, { status: 'error' });
     }
   };
 
@@ -68,23 +123,15 @@ export default function CameraScreen({ onNavigateToReview }: Props) {
         isActive={true}
         photo={true}
       />
-
-      {/* ガイド枠 */}
       <View style={styles.guide} />
-
-      {/* ヘッダー */}
       <SafeAreaView style={styles.header}>
         <Text style={styles.headerText}>領収書を枠内に合わせて撮影</Text>
       </SafeAreaView>
-
-      {/* 撮影済みバッジ → タップでレビュー画面へ */}
       {capturedCount > 0 && (
         <TouchableOpacity style={styles.badge} onPress={onNavigateToReview}>
           <Text style={styles.badgeText}>📋 {capturedCount}枚 →</Text>
         </TouchableOpacity>
       )}
-
-      {/* 撮影ボタン */}
       <View style={styles.controls}>
         <TouchableOpacity
           style={[styles.captureButton, isTakingPhoto && styles.disabled]}

@@ -4,6 +4,7 @@ frontend/android/build/
 frontend/android/.gradle/
 frontend/ios/build/
 frontend/.gradle/
+frontend/.vscode/
 
 # backend
 backend/target/
@@ -16,3 +17,9 @@ backend/.idea/
 
 # ログ
 *.log
+
+# node.js
+node_modules/
+
+package-lock.json
+package.json
