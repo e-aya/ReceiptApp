@@ -25,13 +25,18 @@ export const receiptStore = {
     return newReceipt;
   },
 
+  // 領収書を更新
   updateReceipt: (id: string, updates: Partial<Receipt>) => {
     globalReceipts = globalReceipts.map(r =>
       r.id === id ? { ...r, ...updates } : r
     );
     notifyListeners();
   },
-
+  // 領収書を削除
+  removeReceipt: (id: string) => {
+    globalReceipts = globalReceipts.filter(r => r.id !== id);
+    notifyListeners();
+  },
   clearAll: () => {
     globalReceipts = [];
     notifyListeners();

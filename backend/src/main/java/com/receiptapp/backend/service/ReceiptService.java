@@ -10,6 +10,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.List;
 
 @Service
@@ -26,17 +27,13 @@ public class ReceiptService {
     public ReceiptResponse upload(String userId, MultipartFile file)
             throws IOException {
 
-        // ユーザー取得
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new RuntimeException("ユーザーが見つかりません"));
 
-        // 使用量チェック（上限超過でUsageLimitException）
         usageLimitService.checkAndIncrement(user);
 
-        // 画像保存
         String imagePath = storageService.save(file);
 
-        // DBに保存
         Receipt receipt = new Receipt();
         receipt.setUser(user);
         receipt.setImagePath(imagePath);
@@ -54,26 +51,22 @@ public class ReceiptService {
                 .toList();
     }
 
-    // ★ analyzeメソッドを追加
     @Transactional
     public ReceiptResponse analyze(String receiptId) throws Exception {
 
         Receipt receipt = receiptRepository.findById(receiptId)
                 .orElseThrow(() -> new RuntimeException("領収書が見つかりません"));
 
-        // ステータスを「解析中」に更新
         receipt.setStatus("analyzing");
         receiptRepository.save(receipt);
 
         try {
-            // Vision API でテキスト抽出
             String rawText = visionService.extractText(receipt.getImagePath());
-            String[] lines = rawText.split("\n");
+            List<String> lines = Arrays.asList(rawText.split("\n"));
 
-            // 各項目をパース
             receipt.setStoreName(ocrParserService.parseStoreName(lines));
-            receipt.setReceiptDate(ocrParserService.parseDate(lines));
-            receipt.setAmount(ocrParserService.parseAmount(lines));
+            receipt.setReceiptDate(ocrParserService.parseDate(lines));   // LocalDate ✅
+            receipt.setAmount(ocrParserService.parseAmount(lines));      // Integer  ✅
             receipt.setStatus("done");
             receipt.setAnalyzedAt(java.time.LocalDateTime.now());
 
@@ -92,8 +85,11 @@ public class ReceiptService {
         res.setId(r.getId());
         res.setStatus(r.getStatus());
         res.setStoreName(r.getStoreName());
-        res.setReceiptDate(r.getReceiptDate());
-        res.setAmount(r.getAmount());
+        // ★ LocalDate → ISO文字列 "2026-03-08" に変換してフロントへ
+        res.setReceiptDate(
+                r.getReceiptDate() != null ? r.getReceiptDate().toString() : null
+        );
+        res.setAmount(r.getAmount());  // Integer そのまま
         res.setAccountItem(r.getAccountItem());
         res.setMemo(r.getMemo());
         res.setCreatedAt(r.getCreatedAt());

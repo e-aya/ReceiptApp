@@ -1,10 +1,11 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View, Text, StyleSheet, FlatList,
-  TouchableOpacity, Image, SafeAreaView, Alert,
+  TouchableOpacity, Image, SafeAreaView, Alert, Modal,
 } from 'react-native';
 import { useReceipts, receiptStore } from '../store/receiptStore';
 import { Receipt } from '../types';
+import { exportCsv, CsvFormat } from '../utils/csvExport';
 
 interface Props {
   onBack: () => void;
@@ -12,26 +13,28 @@ interface Props {
 
 export default function ReviewScreen({ onBack }: Props) {
   const receipts = useReceipts();
+  const [showFormatModal, setShowFormatModal] = useState(false);
 
   const handleDelete = (id: string) => {
     Alert.alert('削除確認', 'この領収書を削除しますか？', [
       { text: 'キャンセル', style: 'cancel' },
       {
         text: '削除', style: 'destructive',
-        onPress: () => receiptStore.updateReceipt(id, { status: 'error' }),
+        onPress: () => receiptStore.removeReceipt(id),
       },
     ]);
   };
 
-  const handleExportCSV = () => {
-    const done = receipts.filter(r => r.status === 'done');
-    if (done.length === 0) {
-      Alert.alert('確認', 'OCR解析済みの領収書がありません\nPhase2実装後に利用可能です');
-      return;
+  const handleSelectFormat = async (format: CsvFormat) => {
+    setShowFormatModal(false);
+    try {
+      await exportCsv(receipts, format);
+    } catch (e: any) {
+      Alert.alert('エラー', e.message);
     }
-    // TODO: Phase3でCSV出力実装
-    Alert.alert('CSV出力', `${done.length}件を出力します（Phase3で実装）`);
   };
+
+  const doneCount = receipts.filter(r => r.status === 'done').length;
 
   const renderItem = ({ item }: { item: Receipt }) => (
     <View style={styles.item}>
@@ -43,12 +46,8 @@ export default function ReviewScreen({ onBack }: Props) {
           {item.status === 'done'      && '✅ 解析完了'}
           {item.status === 'error'     && '❌ エラー'}
         </Text>
-        <Text style={styles.itemDetail}>
-          🏪 {item.storeName ?? '未取得'}
-        </Text>
-        <Text style={styles.itemDetail}>
-          📅 {item.date ?? '未取得'}
-        </Text>
+        <Text style={styles.itemDetail}>🏪 {item.storeName ?? '未取得'}</Text>
+        <Text style={styles.itemDetail}>📅 {item.date ?? '未取得'}</Text>
         <Text style={styles.itemDetail}>
           💴 {item.amount ? `¥${item.amount}` : '未取得'}
         </Text>
@@ -56,11 +55,8 @@ export default function ReviewScreen({ onBack }: Props) {
           {item.capturedAt.toLocaleTimeString('ja-JP')}
         </Text>
       </View>
-      <TouchableOpacity
-        style={styles.deleteButton}
-        onPress={() => handleDelete(item.id)}
-      >
-        <Text style={styles.deleteText}>✕</Text>
+      <TouchableOpacity style={styles.deleteButton} onPress={() => handleDelete(item.id)}>
+        <Text style={styles.deleteText}>🗑</Text>
       </TouchableOpacity>
     </View>
   );
@@ -72,8 +68,11 @@ export default function ReviewScreen({ onBack }: Props) {
         <TouchableOpacity onPress={onBack} style={styles.backButton}>
           <Text style={styles.backText}>← 撮影に戻る</Text>
         </TouchableOpacity>
-        <Text style={styles.title}>撮影済み ({receipts.length}枚)</Text>
-        <TouchableOpacity onPress={handleExportCSV} style={styles.csvButton}>
+        <Text style={styles.title}>領収書済み ({receipts.length}枚)</Text>
+        <TouchableOpacity
+          style={[styles.csvButton, doneCount === 0 && styles.csvDisabled]}
+          onPress={() => doneCount > 0 && setShowFormatModal(true)}
+        >
           <Text style={styles.csvText}>CSV出力</Text>
         </TouchableOpacity>
       </View>
@@ -91,6 +90,36 @@ export default function ReviewScreen({ onBack }: Props) {
           contentContainerStyle={styles.list}
         />
       )}
+
+      {/* フォーマット選択モーダル */}
+      <Modal visible={showFormatModal} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalBox}>
+            <Text style={styles.modalTitle}>
+              出力形式を選択（{doneCount}件）
+            </Text>
+            {[
+              { key: 'yayoi',         label: '弥生会計' },
+              { key: 'moneyforward',  label: 'マネーフォワード' },
+              { key: 'freee',         label: 'freee' },
+            ].map(f => (
+              <TouchableOpacity
+                key={f.key}
+                style={styles.formatButton}
+                onPress={() => handleSelectFormat(f.key as CsvFormat)}
+              >
+                <Text style={styles.formatText}>{f.label}</Text>
+              </TouchableOpacity>
+            ))}
+            <TouchableOpacity
+              style={styles.cancelButton}
+              onPress={() => setShowFormatModal(false)}
+            >
+              <Text style={styles.cancelText}>キャンセル</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -110,6 +139,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#00C853',
     paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6,
   },
+  csvDisabled: { backgroundColor: '#ccc' },
   csvText: { color: '#fff', fontWeight: 'bold', fontSize: 13 },
   list: { padding: 12 },
   item: {
@@ -127,4 +157,24 @@ const styles = StyleSheet.create({
   deleteText: { color: '#999', fontSize: 18 },
   empty: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   emptyText: { color: '#999', fontSize: 16 },
+  // モーダル
+  modalOverlay: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalBox: {
+    backgroundColor: '#fff', borderTopLeftRadius: 16,
+    borderTopRightRadius: 16, padding: 24,
+  },
+  modalTitle: {
+    fontSize: 16, fontWeight: 'bold',
+    textAlign: 'center', marginBottom: 20,
+  },
+  formatButton: {
+    backgroundColor: '#f0fdf4', borderWidth: 1, borderColor: '#00C853',
+    borderRadius: 8, padding: 16, marginBottom: 12, alignItems: 'center',
+  },
+  formatText: { color: '#00C853', fontWeight: 'bold', fontSize: 16 },
+  cancelButton: { padding: 16, alignItems: 'center' },
+  cancelText: { color: '#999', fontSize: 15 },
 });

@@ -1,6 +1,10 @@
 package com.receiptapp.backend.service;
 
 import org.springframework.stereotype.Service;
+
+import java.time.LocalDate;
+import java.util.List;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -8,212 +12,159 @@ import java.util.regex.Pattern;
 public class OcrParserService {
 
     // 店名抽出
-    public String parseStoreName(String[] lines) {
-        int limit = Math.min(8, lines.length);
-        String best = null;
-        int bestScore = Integer.MIN_VALUE;
-        int bestIdx = -1;
+    public String parseStoreName(List<String> lines) {
 
-        for (int i = 0; i < limit; i++) {
-            String line = lines[i].trim();
+        // ★ 既知のコンビニ・チェーン名（英語表記）
+        List<String> knownChains = List.of(
+                "FamilyMart", "LAWSON", "7-Eleven", "7-ELEVEN",
+                "MINISTOP", "ministop", "DAILY"
+        );
+
+        // 先頭8行を対象
+        List<String> candidates = lines.subList(0, Math.min(8, lines.size()));
+
+        // ★ コンビニチェーン名チェック（英語ブランド名 + 次行の店舗名を結合）
+        for (int i = 0; i < candidates.size(); i++) {
+            String line = candidates.get(i).trim();
+            for (String chain : knownChains) {
+                if (line.contains(chain) && i + 1 < candidates.size()) {
+                    String nextLine = candidates.get(i + 1).trim();
+                    // 次行が住所・電話番号でなければ結合
+                    if (!nextLine.matches(".*\\d{2,4}[-－]\\d{3,4}[-－]\\d{4}.*")
+                            && !nextLine.matches(".*[都道府県市区町村].*")) {
+                        return chain + " " + nextLine;
+                    }
+                    return chain;
+                }
+            }
+        }
+
+        // 日本語スコアリングで店名候補を選定
+        String bestLine = null;
+        int bestScore = 0;
+
+        for (int i = 0; i < candidates.size(); i++) {
+            String line = candidates.get(i).trim();
+
+            // スキップ条件
             if (line.isEmpty()) continue;
-            if (shouldSkip(line)) continue;
-            if (!containsJapanese(line)) continue;
+            if (line.matches(".*\\d{2,4}[-－]\\d{3,4}[-－]\\d{4}.*")) continue; // 電話番号
+            if (line.matches(".*[都道府県市区町村].*\\d+.*")) continue;           // 住所
+            if (line.matches("^[0-9\\-/年月日\\s:]+$")) continue;               // 日付・数字のみ
+            if (line.matches(".*領収[書証].*")) continue;                        // 「領収書」「領収証」
+            if (line.matches("^T\\d{13}$")) continue;                           // インボイス番号
+            if (line.matches(".*登録番号.*")) continue;
+            if (line.matches(".*電話.*")) continue;
 
-            int score = calcScore(line, i);
+            int score = 0;
+
+            // 日本語文字の割合でスコアリング
+            long japaneseCount = line.chars()
+                    .filter(c -> (c >= 0x3040 && c <= 0x309F)   // ひらがな
+                            || (c >= 0x30A0 && c <= 0x30FF)   // カタカナ
+                            || (c >= 0x4E00 && c <= 0x9FFF))  // 漢字
+                    .count();
+            score += (int)(japaneseCount * 3);
+
+            // 短すぎる・長すぎる行はペナルティ
+            if (line.length() < 2) score -= 10;
+            if (line.length() > 20) score -= 5;
+
+            // 先頭行ほど優先
+            score -= i * 2;
+
             if (score > bestScore) {
                 bestScore = score;
-                best = line;
-                bestIdx = i;
+                bestLine = line;
+
+                // ★ 次行が短い日本語なら結合（例:「名物 銀河の」+「チャンポン」）
+                if (i + 1 < candidates.size()) {
+                    String nextLine = candidates.get(i + 1).trim();
+                    boolean nextIsShortJapanese = nextLine.length() <= 10
+                            && nextLine.chars().anyMatch(c ->
+                            (c >= 0x3040 && c <= 0x309F)
+                                    || (c >= 0x30A0 && c <= 0x30FF)
+                                    || (c >= 0x4E00 && c <= 0x9FFF));
+                    boolean nextIsNotAddress = !nextLine.matches(".*[都道府県市区町村].*");
+                    boolean nextIsNotPhone   = !nextLine.matches(".*\\d{2,4}[-－]\\d{3,4}[-－]\\d{4}.*");
+
+                    if (nextIsShortJapanese && nextIsNotAddress && nextIsNotPhone) {
+                        bestLine = line + " " + nextLine;
+                    }
+                }
             }
         }
 
-        if (best == null) return null;
-
-        // ★ 次の行が日本語かつスキップ対象でない場合は結合
-        // 例: "名物 銀河の" + "チャンポン" → "名物 銀河のチャンポン"
-        if (bestIdx + 1 < limit) {
-            String nextLine = lines[bestIdx + 1].trim();
-            if (!nextLine.isEmpty()
-                    && !shouldSkip(nextLine)
-                    && containsJapanese(nextLine)
-                    && nextLine.length() <= 12  // 短い行のみ結合
-            ) {
-                best = best + nextLine;
-            }
-        }
-
-        // 先頭の記号を除去
-        return best.replaceAll(
-                "^[^\\u3040-\\u309f\\u30a0-\\u30ff\\u4e00-\\u9faf\\w]+", ""
-        ).trim();
+        return bestLine;
     }
 
     // 日付抽出
-    public String parseDate(String[] lines) {
-        Pattern[] patterns = {
-                Pattern.compile("(\\d{4})[/\\-](\\d{1,3})[/\\-](\\d{1,2})"),
-                Pattern.compile("(\\d{4})年\\s*(\\d{1,2})月\\s*(\\d{1,2})日"),
-        };
-
+    public LocalDate parseDate(List<String> lines) {
+        Pattern p = Pattern.compile("(\\d{2,4})年\\s*(\\d{1,2})月\\s*(\\d{1,2})日");
         for (String line : lines) {
-            for (Pattern p : patterns) {
-                Matcher m = p.matcher(line);
-                if (m.find()) {
-                    String year  = m.group(1);
-                    String month = fixTwoDigit(m.group(2));
-                    String day   = fixTwoDigit(m.group(3));
-                    // 年の妥当性チェック
-                    int y = Integer.parseInt(year);
-                    if (y < 2000 || y > 2100) continue;
-                    return year + "-" + month + "-" + day;
-                }
+            Matcher m = p.matcher(line);
+            if (m.find()) {
+                int year = Integer.parseInt(m.group(1));
+                if (year < 100) year += 2000; // ★ 2桁年 → 2026等に変換
+                int month = Integer.parseInt(m.group(2));
+                int day   = Integer.parseInt(m.group(3));
+                return LocalDate.of(year, month, day);
             }
         }
         return null;
     }
 
     // 金額抽出
-    public String parseAmount(String[] lines) {
+    public Integer parseAmount(List<String> lines) {
 
-        Pattern yenPattern = Pattern.compile("[¥￥]\\s*([\\d,，.．]+)");
+        // ★ ¥形式と円形式の両方にマッチ
+        Pattern yenPattern    = Pattern.compile("[¥￥](\\d{1,3}(?:,\\d{3})*|\\d+)");
+        Pattern circlePattern = Pattern.compile("^(\\d{1,3}(?:,\\d{3})*|\\d+)\\s*円$");
 
-        java.util.function.Function<String, String> cleanNum = s ->
-                s.replaceAll("[,，.．]", "");
-
-        // 除外キーワード（合計以外の支払い行）
-        java.util.function.Predicate<String> isExcluded = line -> {
-            String n = line.replaceAll("\\s", "");
-            return n.contains("現金") || n.contains("お釣")
-                    || n.contains("おつり") || n.contains("クレジット")
-                    || n.contains("ポイント") || n.contains("電子マネー")
-                    || n.startsWith("(") || n.startsWith("（");
-        };
-
-        // ★ Step1: 「合計」行を探す（最後に出現したものを優先）
-        int totalIdx = -1;
-        for (int i = 0; i < lines.length; i++) {
-            String n = lines[i].replace("　", "").replaceAll("\\s+", "");
-            // 「合計」の完全一致 or 行頭・行末
-            if (n.equals("合計") || n.equals("合计")
-                    || n.matches("^合[　\\s]*計.*")
-                    || n.matches(".*[^内対象]合計$")) {
-                totalIdx = i;
+        // 合計行を探す
+        int totalLineIndex = -1;
+        for (int i = lines.size() - 1; i >= 0; i--) {
+            String t = lines.get(i).trim();
+            if (t.equals("合計") || t.matches("^合[　\\s]*計.*")) {
+                totalLineIndex = i;
+                break;
             }
         }
 
-        // ★ Step2: 合計行と同一行に金額があるか確認
-        if (totalIdx >= 0) {
-            Matcher m = yenPattern.matcher(lines[totalIdx]);
-            if (m.find()) {
-                String num = cleanNum.apply(m.group(1));
-                if (num.matches("\\d{3,6}")) return num;
+        if (totalLineIndex >= 0) {
+            // 同一行チェック
+            String totalLine = lines.get(totalLineIndex);
+            Integer val = extractAmount(totalLine, yenPattern, circlePattern);
+            if (val != null) return val;
+
+            // 合計行の後を探す
+            Set<String> skipWords = Set.of("現金", "お釣", "釣り", "お預り", "クレジット", "電子マネー");
+            for (int i = totalLineIndex + 1; i < Math.min(totalLineIndex + 5, lines.size()); i++) {
+                String line = lines.get(i).trim();
+                if (skipWords.stream().anyMatch(line::contains)) continue;
+                val = extractAmount(line, yenPattern, circlePattern);
+                if (val != null) return val;
             }
         }
 
-        // ★ Step3: 合計行の「後」で最初の¥付き金額を返す
-        if (totalIdx >= 0) {
-            for (int i = totalIdx + 1; i < lines.length; i++) {
-                String line = lines[i].trim();
-                if (isExcluded.test(line)) continue;
-                Matcher m = yenPattern.matcher(line);
-                if (m.find()) {
-                    String num = cleanNum.apply(m.group(1));
-                    if (num.matches("\\d{3,6}")) return num;
-                }
-            }
-        }
-
-        // ★ Step4: 「小計」でも同様に試みる
-        int subTotalIdx = -1;
-        for (int i = 0; i < lines.length; i++) {
-            String n = lines[i].replace("　", "").replaceAll("\\s+", "");
-            if (n.equals("小計") || n.matches("^小[　\\s]*計.*")) {
-                subTotalIdx = i;
-            }
-        }
-        if (subTotalIdx >= 0) {
-            for (int i = subTotalIdx + 1; i < lines.length; i++) {
-                String line = lines[i].trim();
-                if (isExcluded.test(line)) continue;
-                Matcher m = yenPattern.matcher(line);
-                if (m.find()) {
-                    String num = cleanNum.apply(m.group(1));
-                    if (num.matches("\\d{3,6}")) return num;
-                }
-            }
-        }
-
-        // ★ Step5: フォールバック（¥付きで3桁以上の最大金額）
-        String maxAmount = null;
-        int maxVal = 0;
-        for (String line : lines) {
-            if (isExcluded.test(line)) continue;
-            if (line.matches(".*\\d{2,4}-\\d{3,4}-\\d{4}.*")) continue;
-            if (line.matches(".*\\d{4}[/\\-]\\d{1,2}.*")) continue;
-            Matcher m = yenPattern.matcher(line);
-            while (m.find()) {
-                String num = cleanNum.apply(m.group(1));
-                if (num.matches("\\d{3,6}")) {
-                    int val = Integer.parseInt(num);
-                    if (val > maxVal) {
-                        maxVal = val;
-                        maxAmount = num;
-                    }
-                }
-            }
-        }
-        return maxAmount;
+        // フォールバック: 最大金額
+        return lines.stream()
+                .map(l -> extractAmount(l, yenPattern, circlePattern))
+                .filter(v -> v != null && v > 0)
+                .max(Integer::compareTo)
+                .orElse(null);
     }
 
-    // スキップすべき行か判定
-    private boolean shouldSkip(String line) {
-        return line.matches(".*\\d{2,4}-\\d{3,4}-\\d{4}.*")
-                || line.matches(".*[都道府県市区町村].*")
-                || line.matches(".*丁目.*|.*番地.*")
-                || line.matches("(?i)^(tel|fax).*")
-                || line.matches(".*ありがとう.*")
-                || line.matches(".*毎度.*")
-                || line.matches("^[¥￥\\d,，.\\s]+$")
-                || line.startsWith("※")
-                || line.contains("軽減税率")
-                || line.matches(".*T\\d{10,}.*")
-                || line.matches(".*登録番号.*");
-    }
-
-    // 日本語を含むか
-    private boolean containsJapanese(String s) {
-        return s.matches(
-                ".*[\\u3040-\\u309f\\u30a0-\\u30ff\\u4e00-\\u9faf].*"
-        );
-    }
-
-    // スコア計算
-    private int calcScore(String text, int idx) {
-        int score = 0;
-        long jpCount = text.chars()
-                .filter(c -> c >= 0x3040 && c <= 0x9faf).count();
-        score += jpCount * 2;
-        score -= idx;
-        if (text.matches(".*[店屋館亭堂食麺飯菜酒処拉].*")) score += 5;
-        if (text.length() > 20) score -= 5;
-        return score;
-    }
-
-    // 1〜2桁に補正（OCR誤読対応）
-    private String fixTwoDigit(String s) {
-        s = s.trim();
-        try {
-            int val = Integer.parseInt(s);
-            if (val <= 31) return String.format("%02d", val);
-            // 3桁の場合: 先頭0なら末尾2桁、そうでなければ先頭2桁
-            if (s.startsWith("0")) {
-                return s.substring(s.length() - 2);
-            } else {
-                return s.substring(0, 2);
-            }
-        } catch (NumberFormatException e) {
-            return s;
+    // ★ ¥形式・円形式の両方から金額を抽出するヘルパー
+    private Integer extractAmount(String line, Pattern yenPattern, Pattern circlePattern) {
+        Matcher m1 = yenPattern.matcher(line);
+        if (m1.find()) {
+            return Integer.parseInt(m1.group(1).replace(",", ""));
         }
+        Matcher m2 = circlePattern.matcher(line.trim());
+        if (m2.find()) {
+            return Integer.parseInt(m2.group(1).replace(",", ""));
+        }
+        return null;
     }
 }
