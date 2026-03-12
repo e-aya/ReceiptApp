@@ -117,15 +117,24 @@ public class OcrParserService {
     // 金額抽出
     public Integer parseAmount(List<String> lines) {
 
-        // ★ ¥形式と円形式の両方にマッチ
         Pattern yenPattern    = Pattern.compile("[¥￥](\\d{1,3}(?:,\\d{3})*|\\d+)");
         Pattern circlePattern = Pattern.compile("^(\\d{1,3}(?:,\\d{3})*|\\d+)\\s*円$");
 
-        // 合計行を探す
+        // ★ スキップワード（フォールバックでも使用）
+        Set<String> skipWords = Set.of(
+                "現金", "お釣", "釣り", "お預り", "預り",
+                "クレジット", "電子マネー", "チャージ", "ポイント"
+        );
+
+        // 合計行を探す（全角スペース対応を強化）
         int totalLineIndex = -1;
         for (int i = lines.size() - 1; i >= 0; i--) {
             String t = lines.get(i).trim();
-            if (t.equals("合計") || t.matches("^合[　\\s]*計.*")) {
+            // ★ Unicodeの全角スペース(\u3000)も明示的に対応
+            String normalized = t.replace("\u3000", " ").replaceAll("\\s+", "");
+            if (normalized.startsWith("合計")
+                    || t.equals("合計")
+                    || t.matches("^合[\\s\u3000]*計.*")) {
                 totalLineIndex = i;
                 break;
             }
@@ -137,8 +146,7 @@ public class OcrParserService {
             Integer val = extractAmount(totalLine, yenPattern, circlePattern);
             if (val != null) return val;
 
-            // 合計行の後を探す
-            Set<String> skipWords = Set.of("現金", "お釣", "釣り", "お預り", "クレジット", "電子マネー");
+            // 合計行の後を探す（スキップワード適用）
             for (int i = totalLineIndex + 1; i < Math.min(totalLineIndex + 5, lines.size()); i++) {
                 String line = lines.get(i).trim();
                 if (skipWords.stream().anyMatch(line::contains)) continue;
@@ -147,8 +155,33 @@ public class OcrParserService {
             }
         }
 
-        // フォールバック: 最大金額
+        // 小計行でも試みる
+        int subTotalIndex = -1;
+        for (int i = lines.size() - 1; i >= 0; i--) {
+            String t = lines.get(i).trim()
+                    .replace("\u3000", " ").replaceAll("\\s+", "");
+            if (t.startsWith("小計")) {
+                subTotalIndex = i;
+                break;
+            }
+        }
+
+        if (subTotalIndex >= 0) {
+            String subLine = lines.get(subTotalIndex);
+            Integer val = extractAmount(subLine, yenPattern, circlePattern);
+            if (val != null) return val;
+
+            for (int i = subTotalIndex + 1; i < Math.min(subTotalIndex + 5, lines.size()); i++) {
+                String line = lines.get(i).trim();
+                if (skipWords.stream().anyMatch(line::contains)) continue;
+                val = extractAmount(line, yenPattern, circlePattern);
+                if (val != null) return val;
+            }
+        }
+
+        // ★ フォールバック: スキップワードを除いた最大金額
         return lines.stream()
+                .filter(l -> skipWords.stream().noneMatch(l::contains)) // ← お預り等を除外
                 .map(l -> extractAmount(l, yenPattern, circlePattern))
                 .filter(v -> v != null && v > 0)
                 .max(Integer::compareTo)
