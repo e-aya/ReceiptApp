@@ -1,5 +1,5 @@
 import RNFS from 'react-native-fs';
-import { Share } from 'react-native';
+import Share from 'react-native-share'; // ★ react-native-share に変更
 import { Receipt } from '../types';
 
 export type CsvFormat = 'yayoi' | 'moneyforward' | 'freee';
@@ -84,10 +84,12 @@ export const exportCsv = async (
   const filePath = `${RNFS.CachesDirectoryPath}/${fileName}`;
   await RNFS.writeFile(filePath, bom + csvContent, 'utf8');
 
-  await Share.share({
+  // ★ 変更: Share.share → Share.open
+  await Share.open({
     title: fileName,
     url: `file://${filePath}`,
-    message: filePath,
+    type: 'text/csv',
+    filename: fileName,
   });
 };
 

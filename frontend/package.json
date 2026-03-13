@@ -19,6 +19,7 @@
     "react-native-image-resizer": "^1.4.5",
     "react-native-safe-area-context": "^5.7.0",
     "react-native-screens": "^4.24.0",
+    "react-native-share": "^12.2.6",
     "react-native-vision-camera": "^4.7.3"
   },
   "devDependencies": {
