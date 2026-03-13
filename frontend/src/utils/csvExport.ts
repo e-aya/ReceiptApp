@@ -1,56 +1,94 @@
-﻿import RNFS from 'react-native-fs';
+import RNFS from 'react-native-fs';
 import { Share } from 'react-native';
 import { Receipt } from '../types';
 
 export type CsvFormat = 'yayoi' | 'moneyforward' | 'freee';
 
+// ── 弥生会計 ──────────────────────────────
 const toYayoi = (receipts: Receipt[]): string => {
-  const header = '\u7ba1\u7406\u756a\u53f7,\u53d6\u5f15\u65e5,\u501f\u65b9\u52d8\u5b9a\u79d1\u76ee,\u501f\u65b9\u88dc\u52a9\u79d1\u76ee,\u501f\u65b9\u7a0e\u533a\u5206,\u501f\u65b9\u91d1\u984d,\u8cb8\u65b9\u52d8\u5b9a\u79d1\u76ee,\u8cb8\u65b9\u88dc\u52a9\u79d1\u76ee,\u8cb8\u65b9\u7a0e\u533a\u5206,\u8cb8\u65b9\u91d1\u984d,\u6458\u8981';
+  const header = '管理番号,取引日,借方勘定科目,借方補助科目,借方税区分,借方金額,貸方勘定科目,貸方補助科目,貸方税区分,貸方金額,摘要';
   const rows = receipts.map((r, i) =>
-    [i + 1, r.date ?? '', r.accountItem ?? '\u6d88\u8017\u54c1\u8cbb', '', '\u8ab2\u7a0e\u4ed810%', r.amount ?? 0, '\u73fe\u91d1', '', '', '', r.storeName ?? ''].join(',')
+    [
+      i + 1,
+      r.date ?? '',
+      r.accountItem ?? '消耗品費', // ★ 編集画面で設定した勘定科目を使用
+      '', '課税仕入10%',
+      r.amount ?? 0,
+      '現金', '', '',
+      '',
+      r.storeName ?? '',
+    ].join(',')
   );
   return [header, ...rows].join('\r\n');
 };
 
+// ── マネーフォワード ───────────────────────
 const toMoneyForward = (receipts: Receipt[]): string => {
-  const header = '\u53d6\u5f15\u65e5,\u53d6\u5f15\u5185\u5bb9,\u91d1\u984d\uff08\u5186\uff09,\u52d8\u5b9a\u79d1\u76ee,\u7a0e\u533a\u5206,\u30e1\u30e2,\u30bf\u30b0,\u6c7a\u6e08\u53e3\u5ea7';
+  const header = '取引日,取引内容,金額（円）,勘定科目,税区分,メモ,タグ,決済口座';
   const rows = receipts.map(r =>
-    [r.date ?? '', r.storeName ?? '', r.amount ?? 0, r.accountItem ?? '\u6d88\u8017\u54c1\u8cbb', '\u8ab2\u7a0e10%', '', '', '\u73fe\u91d1'].join(',')
+    [
+      r.date ?? '',
+      r.storeName ?? '',
+      r.amount ?? 0,
+      r.accountItem ?? '消耗品費', // ★
+      '課税10%',
+      '', '', '現金',
+    ].join(',')
   );
   return [header, ...rows].join('\r\n');
 };
 
+// ── freee ─────────────────────────────────
 const toFreee = (receipts: Receipt[]): string => {
-  const header = '\u767a\u751f\u65e5,\u52d8\u5b9a\u79d1\u76ee,\u53d6\u5f15\u5148,\u91d1\u984d,\u7a0e\u533a\u5206,\u5099\u8003,\u54c1\u76ee,\u90e8\u9580';
+  const header = '発生日,勘定科目,取引先,金額,税区分,備考,品目,部門';
   const rows = receipts.map(r =>
-    [r.date ?? '', r.accountItem ?? '\u6d88\u8017\u54c1\u8cbb', r.storeName ?? '', r.amount ?? 0, '\u8ab2\u7a0e\u4ed5\u5165(10%)', '', '', ''].join(',')
+    [
+      r.date ?? '',
+      r.accountItem ?? '消耗品費', // ★
+      r.storeName ?? '',
+      r.amount ?? 0,
+      '課税仕入(10%)',
+      '', '', '',
+    ].join(',')
   );
   return [header, ...rows].join('\r\n');
 };
 
-export const exportCsv = async (receipts: Receipt[], format: CsvFormat): Promise<void> => {
+// ── メイン関数 ────────────────────────────
+export const exportCsv = async (
+  receipts: Receipt[],
+  format: CsvFormat
+): Promise<void> => {
   const done = receipts.filter(r => r.status === 'done');
-  if (done.length === 0) throw new Error('\u89e3\u6790\u6e08\u307f\u306e\u9818\u53ce\u66f8\u304c\u3042\u308a\u307e\u305b\u3093');
+  if (done.length === 0) throw new Error('解析済みの領収書がありません');
+
   let csvContent = '';
   let fileName = '';
+
   switch (format) {
     case 'yayoi':
       csvContent = toYayoi(done);
-      fileName = `\u9818\u53ce\u66f8_\u5f25\u751f_${today()}.csv`;
+      fileName = `領収書_弥生_${today()}.csv`;
       break;
     case 'moneyforward':
       csvContent = toMoneyForward(done);
-      fileName = `\u9818\u53ce\u66f8_MF_${today()}.csv`;
+      fileName = `領収書_MF_${today()}.csv`;
       break;
     case 'freee':
       csvContent = toFreee(done);
-      fileName = `\u9818\u53ce\u66f8_freee_${today()}.csv`;
+      fileName = `領収書_freee_${today()}.csv`;
       break;
   }
+
   const bom = '\uFEFF';
   const filePath = `${RNFS.CachesDirectoryPath}/${fileName}`;
   await RNFS.writeFile(filePath, bom + csvContent, 'utf8');
-  await Share.share({ title: fileName, url: `file://${filePath}`, message: filePath });
+
+  await Share.share({
+    title: fileName,
+    url: `file://${filePath}`,
+    message: filePath,
+  });
 };
 
 const today = (): string => {
