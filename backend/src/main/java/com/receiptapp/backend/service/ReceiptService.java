@@ -22,6 +22,7 @@ public class ReceiptService {
     private final StorageService storageService;
     private final UsageLimitService usageLimitService;
     private final VisionService visionService;
+    private final ClaudeService claudeService;
     private final OcrParserService ocrParserService;
 
     public ReceiptResponse upload(String userId, MultipartFile file)
@@ -65,8 +66,16 @@ public class ReceiptService {
             List<String> lines = Arrays.asList(rawText.split("\n"));
 
             receipt.setStoreName(ocrParserService.parseStoreName(lines));
-            receipt.setReceiptDate(ocrParserService.parseDate(lines));   // LocalDate ✅
-            receipt.setAmount(ocrParserService.parseAmount(lines));      // Integer  ✅
+            receipt.setReceiptDate(ocrParserService.parseDate(lines));
+            receipt.setAmount(ocrParserService.parseAmount(lines));
+
+            // ★ AI自動仕訳
+            String accountItem = claudeService.suggestAccountItem(
+                    receipt.getStoreName(),
+                    receipt.getAmount()
+            );
+            receipt.setAccountItem(accountItem);
+
             receipt.setStatus("done");
             receipt.setAnalyzedAt(java.time.LocalDateTime.now());
 
@@ -79,7 +88,6 @@ public class ReceiptService {
         receiptRepository.save(receipt);
         return toResponse(receipt);
     }
-
     private ReceiptResponse toResponse(Receipt r) {
         ReceiptResponse res = new ReceiptResponse();
         res.setId(r.getId());
