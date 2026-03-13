@@ -7,11 +7,13 @@ import { useReceipts, receiptStore } from '../store/receiptStore';
 import { Receipt } from '../types';
 import { exportCsv, CsvFormat } from '../utils/csvExport';
 
+// Propsに onEdit を追加
 interface Props {
   onBack: () => void;
+  onEdit: (id: string) => void;  // ★ 追加
 }
 
-export default function ReviewScreen({ onBack }: Props) {
+export default function ReviewScreen({ onBack, onEdit }: Props) {
   const receipts = useReceipts();
   const [showFormatModal, setShowFormatModal] = useState(false);
 
@@ -41,23 +43,41 @@ export default function ReviewScreen({ onBack }: Props) {
       <Image source={{ uri: `file://${item.imagePath}` }} style={styles.thumbnail} />
       <View style={styles.itemInfo}>
         <Text style={styles.itemStatus}>
-          {item.status === 'pending'   && '⏳ 解析待ち'}
+          {item.status === 'pending' && '⏳ 解析待ち'}
           {item.status === 'analyzing' && '🔄 解析中...'}
-          {item.status === 'done'      && '✅ 解析完了'}
-          {item.status === 'error'     && '❌ エラー'}
+          {item.status === 'done' && '✅ 解析完了'}
+          {item.status === 'error' && '❌ エラー'}
         </Text>
         <Text style={styles.itemDetail}>🏪 {item.storeName ?? '未取得'}</Text>
         <Text style={styles.itemDetail}>📅 {item.date ?? '未取得'}</Text>
         <Text style={styles.itemDetail}>
           💴 {item.amount ? `¥${item.amount}` : '未取得'}
         </Text>
+        {/* ★ 勘定科目表示 */}
+        <Text style={styles.itemDetail}>
+          📒 {item.accountItem ?? '勘定科目未設定'}
+        </Text>
         <Text style={styles.itemTime}>
           {item.capturedAt.toLocaleTimeString('ja-JP')}
         </Text>
       </View>
-      <TouchableOpacity style={styles.deleteButton} onPress={() => handleDelete(item.id)}>
-        <Text style={styles.deleteText}>🗑</Text>
-      </TouchableOpacity>
+      <View style={styles.itemActions}>
+        {/* ★ 編集ボタン（解析完了時のみ） */}
+        {item.status === 'done' && (
+          <TouchableOpacity
+            style={styles.editButton}
+            onPress={() => onEdit(item.id)}
+          >
+            <Text style={styles.editText}>✏️</Text>
+          </TouchableOpacity>
+        )}
+        <TouchableOpacity
+          style={styles.deleteButton}
+          onPress={() => handleDelete(item.id)}
+        >
+          <Text style={styles.deleteText}>🗑</Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 
@@ -153,6 +173,9 @@ const styles = StyleSheet.create({
   itemStatus: { fontSize: 13, fontWeight: 'bold', marginBottom: 4 },
   itemDetail: { fontSize: 13, color: '#333', marginBottom: 2 },
   itemTime: { fontSize: 11, color: '#999', marginTop: 4 },
+  itemActions: { justifyContent: 'space-between', alignItems: 'center' },
+  editButton: { padding: 4, marginBottom: 8 },
+  editText: { fontSize: 18 },
   deleteButton: { padding: 4 },
   deleteText: { color: '#999', fontSize: 18 },
   empty: { flex: 1, justifyContent: 'center', alignItems: 'center' },

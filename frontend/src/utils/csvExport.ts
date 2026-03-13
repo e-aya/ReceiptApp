@@ -11,7 +11,8 @@ const toYayoi = (receipts: Receipt[]): string => {
     [
       i + 1,
       r.date ?? '',
-      '消耗品費', '', '課税仕入10%',
+      r.accountItem ?? '消耗品費', // ★ 編集画面で設定した勘定科目を使用
+      '', '課税仕入10%',
       r.amount ?? 0,
       '現金', '', '',
       '',
@@ -29,7 +30,7 @@ const toMoneyForward = (receipts: Receipt[]): string => {
       r.date ?? '',
       r.storeName ?? '',
       r.amount ?? 0,
-      '消耗品費',
+      r.accountItem ?? '消耗品費', // ★
       '課税10%',
       '', '', '現金',
     ].join(',')
@@ -43,7 +44,7 @@ const toFreee = (receipts: Receipt[]): string => {
   const rows = receipts.map(r =>
     [
       r.date ?? '',
-      '消耗品費',
+      r.accountItem ?? '消耗品費', // ★
       r.storeName ?? '',
       r.amount ?? 0,
       '課税仕入(10%)',
@@ -58,7 +59,6 @@ export const exportCsv = async (
   receipts: Receipt[],
   format: CsvFormat
 ): Promise<void> => {
-  // 解析済みのみ対象
   const done = receipts.filter(r => r.status === 'done');
   if (done.length === 0) throw new Error('解析済みの領収書がありません');
 
@@ -80,16 +80,14 @@ export const exportCsv = async (
       break;
   }
 
-  // BOM付きUTF-8（Excelで文字化けしないよう）
   const bom = '\uFEFF';
   const filePath = `${RNFS.CachesDirectoryPath}/${fileName}`;
   await RNFS.writeFile(filePath, bom + csvContent, 'utf8');
 
-  // 共有メニューを開く
   await Share.share({
     title: fileName,
-    url: `file://${filePath}`,  // iOS
-    message: filePath,          // Android
+    url: `file://${filePath}`,
+    message: filePath,
   });
 };
 

@@ -3,8 +3,8 @@ export interface Receipt {
   imagePath: string;
   capturedAt: Date;
   status: 'pending' | 'analyzing' | 'done' | 'error';
-  // OCR結果（Phase2で埋まる）
   storeName: string | null;
   date: string | null;
-  amount: string | null;
+  amount: number | null;       // ★ string → number
+  accountItem: string | null;  // ★ 勘定科目 追加
 }
