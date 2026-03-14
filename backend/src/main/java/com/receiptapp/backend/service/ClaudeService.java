@@ -53,9 +53,14 @@ public class ClaudeService {
                     }
                     
                     【storeName のルール】
-                    - レシート最上部のブランド名＋支店名を含める
-                      例: 「LAWSON 宗像日の里五丁目店」「資さん 宗像店」
-                    - 住所・電話番号・URLは含めない
+                    - レシート最上部の店舗名のみ
+                    - 支店名・号店名は含めてよい（例: LAWSON 宗像日の里五丁目店）
+                    - 以下は絶対に含めない:
+                      ・住所（市・区・町・丁目・番地など）
+                      ・電話番号
+                      ・URL
+                    - 濁点の誤読に注意（「た」と「だ」など）
+                      正しく読み取れない場合はひらがな・カタカナを慎重に確認
                     
                     【receiptDate のルール】
                             - 「取引日」「購入日」「お取扱日」の日付を使用
@@ -74,13 +79,11 @@ public class ClaudeService {
                     【accountItem のルール】
                     以下の定義を参考に最も適切な1つを選択:
                     - 消耗品費: コンビニ・スーパー・ドラッグストア・文房具・日用品
-                    - 会議費: 社内・取引先との打合せでの飲食
-                        1人あたりの金額が3,000円以下が目安
-                        うどん・ラーメン・ファストフード・カフェ など
-                    - 接待交際費: 取引先・顧客との接待目的の飲食
-                        1人あたりの金額が3,000円超が目安
-                        レストラン・居酒屋・高級定食 など
-                        ※ 合計金額が3,000円以下の定食屋・うどん屋は会議費
+                    - 会議費: 社内打合せ・カフェ・ファストフード・コンビニ飲食
+                        目安: 合計1,000円以下、または明らかに軽食
+                    - 接待交際費: 定食屋・レストラン・居酒屋など食事を目的とした飲食
+                        目安: 合計1,000円超の飲食店での食事
+                        ※ うどん・ラーメン・定食は1,000円超なら接待交際費
                     - 旅費交通費: 電車・バス・タクシー・新幹線・宿泊
                     - 通信費: 携帯電話・インターネット・郵便
                     - 広告宣伝費: 広告・チラシ・販促品
@@ -153,7 +156,6 @@ public class ClaudeService {
                     result.path("amount").isNull() ? null : result.path("amount").asInt(),
                     validateAccountItem(result.path("accountItem").asText(null))
             );
-
         } catch (Exception e) {
             System.err.println("Claude OCR 例外: " + e.getMessage());
             return ClaudeOcrResult.empty();
@@ -163,51 +165,26 @@ public class ClaudeService {
     public String suggestAccountItem(String storeName, Integer amount) {
         try {
             String prompt = String.format("""
-                            以下の領収書情報から最も適切な勘定科目を1つだけ答えてください。
-                            
-                            店名: %s
-                            金額: %d円
-                            
-                            選択肢:
-                            %s
-                            
-                            回答は選択肢の中から1つだけ、余分な説明なしで答えてください。
-                            """,
-                    storeName,
-                    amount != null ? amount : 0,
-                    String.join("\n", ACCOUNT_ITEMS)
-            );
+                    以下の領収書情報から最も適切な勘定科目を1つだけ答えてください。
+                    
+                    店名: %s
+                    金額: %d円
+                    
+                    選択肢:
+                    %s
+                    
+                    回答は選択肢の中から1つだけ、余分な説明なしで答えてください。
+                    """, storeName, amount != null ? amount : 0, String.join("\n", ACCOUNT_ITEMS));
 
-            Map<String, Object> requestBody = Map.of(
-                    "model", "claude-haiku-4-5-20251001",
-                    "max_tokens", 50,
-                    "messages", List.of(
-                            Map.of("role", "user", "content", prompt)
-                    )
-            );
+            Map<String, Object> requestBody = Map.of("model", "claude-haiku-4-5-20251001", "max_tokens", 50, "messages", List.of(Map.of("role", "user", "content", prompt)));
 
-            String responseBody = webClientBuilder.build()
-                    .post()
-                    .uri("https://api.anthropic.com/v1/messages")
-                    .header("x-api-key", apiKey)
-                    .header("anthropic-version", "2023-06-01")
-                    .header("content-type", "application/json")
-                    .bodyValue(requestBody)
-                    .retrieve()
-                    .bodyToMono(String.class)
-                    .block();
+            String responseBody = webClientBuilder.build().post().uri("https://api.anthropic.com/v1/messages").header("x-api-key", apiKey).header("anthropic-version", "2023-06-01").header("content-type", "application/json").bodyValue(requestBody).retrieve().bodyToMono(String.class).block();
 
             JsonNode root = objectMapper.readTree(responseBody);
-            String suggested = root
-                    .path("content").get(0)
-                    .path("text").asText()
-                    .trim();
+            String suggested = root.path("content").get(0).path("text").asText().trim();
 
             // 選択肢に含まれるものだけ返す（安全チェック）
-            return ACCOUNT_ITEMS.stream()
-                    .filter(suggested::contains)
-                    .findFirst()
-                    .orElse("消耗品費");
+            return ACCOUNT_ITEMS.stream().filter(suggested::contains).findFirst().orElse("消耗品費");
 
         } catch (Exception e) {
             // API失敗時はデフォルト値
@@ -217,19 +194,11 @@ public class ClaudeService {
 
     private String validateAccountItem(String item) {
         if (item == null) return "消耗品費";
-        return ACCOUNT_ITEMS.stream()
-                .filter(a -> a.equals(item))
-                .findFirst()
-                .orElse("消耗品費");
+        return ACCOUNT_ITEMS.stream().filter(a -> a.equals(item)).findFirst().orElse("消耗品費");
     }
 
     // OCR結果DTO
-    public record ClaudeOcrResult(
-            String storeName,
-            String receiptDate,
-            Integer amount,
-            String accountItem
-    ) {
+    public record ClaudeOcrResult(String storeName, String receiptDate, Integer amount, String accountItem) {
         public static ClaudeOcrResult empty() {
             return new ClaudeOcrResult(null, null, null, "消耗品費");
         }

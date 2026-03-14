@@ -9,6 +9,7 @@ import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
+
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.List;
@@ -69,7 +70,7 @@ public class ReceiptService {
             receipt.setStoreName(result.storeName());
             receipt.setReceiptDate(
                     result.receiptDate() != null
-                            ? java.time.LocalDate.parse(result.receiptDate())
+                            ? fixYear(java.time.LocalDate.parse(result.receiptDate()))
                             : null
             );
             receipt.setAmount(result.amount());
@@ -86,6 +87,7 @@ public class ReceiptService {
         receiptRepository.save(receipt);
         return toResponse(receipt);
     }
+
     @Transactional
     public ReceiptResponse analyzeGoogle(String receiptId) throws Exception {
 
@@ -125,6 +127,7 @@ public class ReceiptService {
         receiptRepository.save(receipt);
         return toResponse(receipt);
     }
+
     private ReceiptResponse toResponse(Receipt r) {
         ReceiptResponse res = new ReceiptResponse();
         res.setId(r.getId());
@@ -139,5 +142,20 @@ public class ReceiptService {
         res.setMemo(r.getMemo());
         res.setCreatedAt(r.getCreatedAt());
         return res;
+    }
+
+    // ★ 年補正メソッドを追加
+    private java.time.LocalDate fixYear(java.time.LocalDate date) {
+        // 2000年以前の日付は西暦下2桁として補正
+        // 例: 2014-03-09 → 26年3月9日の誤解釈 → 2026-03-09
+        if (date.getYear() < 2000) {
+            // 平成解釈されたケース: 平成XX年 = 1988+XX
+            // 令和解釈されたケース: 令和XX年 = 2018+XX
+            // いずれも「2桁年をそのまま西暦下2桁」として再解釈
+            int twoDigitYear = date.getYear() % 100;
+            int correctedYear = 2000 + twoDigitYear;
+            return date.withYear(correctedYear);
+        }
+        return date;
     }
 }
