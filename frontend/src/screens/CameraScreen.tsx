@@ -108,6 +108,7 @@ export default function CameraScreen({ onNavigateToReview }: Props) {
         storeName: analyzeData.storeName ?? '取得失敗',
         date: analyzeData.receiptDate ?? null,
         amount: analyzeData.amount ?? null,
+        accountItem: analyzeData.accountItem ?? null, // ★ 追加
       });
 
     } catch (error) {
