@@ -39,6 +39,31 @@ public class OcrParserService {
             }
         }
 
+        List<String> regExpList = List.of(
+                "/^(tel|fax|TEL|FAX)/i",
+                "/\\d{2,4}-\\d{3,4}-\\d{4}/",
+                "/^\\d{4}[\\/\\-]\\d{1,2}[\\/\\-]\\d{1,2}/",
+                "/^(領収書|receipt|invoice|レシート)/i",
+                "/^(合計|小計|税込|税抜|消費税|内税|外税|お釣|現金|クレジット|Verifone)/i",
+                "/^[\\d¥￥,.\\s]+$/",
+                "/^[-=*＊＝]{3,}/",
+                "/ありがとう/",
+                ".*毎度[、\\s]*ありがとうございま(す|した).*",
+                "/^(毎度|いつも|またのお越し|ご利用|ご来店)/",
+                "\".*[都道府県市区町村].*\\d+.*\"",
+                "/丁目|番地/",
+                "/^T\\d{13,}/",
+                "/^(登録番号|レシート|伝票|店舗|端末)/",
+                "/マネージャー|マネジャー|店長|スタッフ|担当/",
+                "/^\\d{1,2}:\\d{2}/",
+                "/\\d\\s*(点|名|名様)$/",
+                "/^\\d{4,}$/",
+                "/^※/",
+                "/軽減税率/",
+                "/税率対象/",
+                "/ポイント|会員|お客様番号/"
+        );
+
         // 日本語スコアリングで店名候補を選定
         String bestLine = null;
         int bestScore = 0;
@@ -47,14 +72,24 @@ public class OcrParserService {
             String line = candidates.get(i).trim();
 
             // スキップ条件
+            var skip = false;
             if (line.isEmpty()) continue;
-            if (line.matches(".*\\d{2,4}[-－]\\d{3,4}[-－]\\d{4}.*")) continue; // 電話番号
-            if (line.matches(".*[都道府県市区町村].*\\d+.*")) continue;           // 住所
-            if (line.matches("^[0-9\\-/年月日\\s:]+$")) continue;               // 日付・数字のみ
-            if (line.matches(".*領収[書証].*")) continue;                        // 「領収書」「領収証」
-            if (line.matches("^T\\d{13}$")) continue;                           // インボイス番号
-            if (line.matches(".*登録番号.*")) continue;
-            if (line.matches(".*電話.*")) continue;
+            for (var regExp : regExpList) {
+                if (Pattern.matches(regExp, line)) {
+                    skip = true;
+                    break;
+                }
+            }
+            if (skip) continue;
+//            if (line.matches("/ありがとう/")) continue; // お礼
+//            if (line.matches("/(毎度|いつも|またのお越し|ご利用|ご来店)/")) continue; // 挨拶
+//            if (line.matches(".*\\d{2,4}[-－]\\d{3,4}[-－]\\d{4}.*")) continue; // 電話番号
+//            if (line.matches(".*[都道府県市区町村].*\\d+.*")) continue;           // 住所
+//            if (line.matches("^[0-9\\-/年月日\\s:]+$")) continue;               // 日付・数字のみ
+//            if (line.matches(".*領収[書証].*")) continue;                        // 「領収書」「領収証」
+//            if (line.matches("^T\\d{13}$")) continue;                           // インボイス番号
+//            if (line.matches(".*登録番号.*")) continue;
+//            if (line.matches(".*電話.*")) continue;
 
             int score = 0;
 
@@ -90,6 +125,7 @@ public class OcrParserService {
 
                     if (nextIsShortJapanese && nextIsNotAddress && nextIsNotPhone) {
                         bestLine = line + " " + nextLine;
+                        break;
                     }
                 }
             }

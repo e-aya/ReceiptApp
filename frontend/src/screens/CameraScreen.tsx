@@ -7,9 +7,11 @@ import {
   Camera, useCameraDevice, useCameraPermission,
 } from 'react-native-vision-camera';
 import { receiptStore } from '../store/receiptStore';
+import ImageResizer from 'react-native-image-resizer';
 
 // ★ 本番APIのURL
 const API_BASE_URL = 'https://receiptapp-api-service-production.up.railway.app';
+//const API_BASE_URL = 'http://localhost:8080';
 const USER_ID = 'test-user-001';
 
 interface Props {
@@ -39,6 +41,9 @@ export default function CameraScreen({ onNavigateToReview }: Props) {
       const receipt = receiptStore.addReceipt(photo.path);
       setCapturedCount(prev => prev + 1);
 
+      // handleCapture内の uploadAndAnalyze 呼び出し前に追加
+      const optimizedPath = await optimizeImage(photo.path);
+
       // ③ バックグラウンドでアップロード＋解析
       uploadAndAnalyze(receipt.id, photo.path);
 
@@ -48,7 +53,22 @@ export default function CameraScreen({ onNavigateToReview }: Props) {
       setIsTakingPhoto(false);
     }
   };
-
+  // ★ 最適化関数
+  const optimizeImage = async (imagePath: string): Promise<string> => {
+    try {
+      const resized = await ImageResizer.createResizedImage(
+        imagePath,
+        1024,   // 最大幅
+        1024,   // 最大高さ
+        'JPEG',
+        80,     // 品質80%
+        0,
+      );
+      return resized.path;
+    } catch {
+      return imagePath; // 失敗時は元画像
+    }
+  };
   const uploadAndAnalyze = async (localId: string, imagePath: string) => {
     try {
       // ステータスを「解析中」に更新

@@ -21,8 +21,8 @@ public class ReceiptService {
     private final UserRepository userRepository;
     private final StorageService storageService;
     private final UsageLimitService usageLimitService;
-    private final VisionService visionService;
     private final ClaudeService claudeService;
+    private final VisionService visionService;
     private final OcrParserService ocrParserService;
 
     public ReceiptResponse upload(String userId, MultipartFile file)
@@ -62,7 +62,45 @@ public class ReceiptService {
         receiptRepository.save(receipt);
 
         try {
+            // ★ Claude一発でOCR+仕訳
+            ClaudeService.ClaudeOcrResult result =
+                    claudeService.analyzeReceipt(receipt.getImagePath());
+
+            receipt.setStoreName(result.storeName());
+            receipt.setReceiptDate(
+                    result.receiptDate() != null
+                            ? java.time.LocalDate.parse(result.receiptDate())
+                            : null
+            );
+            receipt.setAmount(result.amount());
+            receipt.setAccountItem(result.accountItem());
+            receipt.setStatus("done");
+            receipt.setAnalyzedAt(java.time.LocalDateTime.now());
+
+        } catch (Exception e) {
+            receipt.setStatus("error");
+            receiptRepository.save(receipt);
+            throw e;
+        }
+
+        receiptRepository.save(receipt);
+        return toResponse(receipt);
+    }
+    @Transactional
+    public ReceiptResponse analyzeGoogle(String receiptId) throws Exception {
+
+
+        Receipt receipt = receiptRepository.findById(receiptId)
+                .orElseThrow(() -> new RuntimeException("領収書が見つかりません"));
+
+        receipt.setStatus("analyzing");
+        receiptRepository.save(receipt);
+
+        try {
             String rawText = visionService.extractText(receipt.getImagePath());
+            //System.out.println(rawText);
+            //String rawText = "毎度ありがとうございます\n名物 銀河の\nチャンポン\n北九州市八幡西区八枝5丁目4-20\nTEL 093-602-2040\n01 マネージャー\n2025/12/13\n14:12\n454290\n1名様\n銀河のチャンポン\n¥1,140\nトンカツのせチャンポン\n¥1,350\n2点\n内税対象計\n¥2,490\n内合現\n内税\n10%\n¥226\n合計\n¥2,490\n現金\nお釣\n¥2,500\n¥10\n※印は軽減税率対象商品です。";
+
             List<String> lines = Arrays.asList(rawText.split("\n"));
 
             receipt.setStoreName(ocrParserService.parseStoreName(lines));
@@ -78,7 +116,6 @@ public class ReceiptService {
 
             receipt.setStatus("done");
             receipt.setAnalyzedAt(java.time.LocalDateTime.now());
-
         } catch (Exception e) {
             receipt.setStatus("error");
             receiptRepository.save(receipt);

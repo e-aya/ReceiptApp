@@ -80,6 +80,9 @@ export default function ReviewScreen({ onBack, onEdit }: Props) {
       </View>
     </View>
   );
+  // ★ ユーザープランの判定（Phase5の認証実装後に本実装）
+  // 現時点ではテスト用にフラグで管理
+  const isPaidUser = false; // TODO: 認証実装後にユーザープランから取得
 
   return (
     <SafeAreaView style={styles.container}>
@@ -89,12 +92,25 @@ export default function ReviewScreen({ onBack, onEdit }: Props) {
           <Text style={styles.backText}>← 撮影に戻る</Text>
         </TouchableOpacity>
         <Text style={styles.title}>領収書済み ({receipts.length}枚)</Text>
-        <TouchableOpacity
-          style={[styles.csvButton, doneCount === 0 && styles.csvDisabled]}
-          onPress={() => doneCount > 0 && setShowFormatModal(true)}
-        >
-          <Text style={styles.csvText}>CSV出力</Text>
-        </TouchableOpacity>
+        {/* CSVボタン部分 */}
+        {isPaidUser ? (
+          <TouchableOpacity
+            style={[styles.csvButton, doneCount === 0 && styles.csvDisabled]}
+            onPress={() => doneCount > 0 && setShowFormatModal(true)}
+          >
+            <Text style={styles.csvText}>CSV出力</Text>
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity
+            style={styles.csvButtonLocked}
+            onPress={() => Alert.alert(
+              '有料プラン限定',
+              'CSV出力は有料プランの機能です\nアップグレードしてご利用ください'
+            )}
+          >
+            <Text style={styles.csvText}>🔒 CSV出力</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* リスト */}
@@ -161,6 +177,10 @@ const styles = StyleSheet.create({
   },
   csvDisabled: { backgroundColor: '#ccc' },
   csvText: { color: '#fff', fontWeight: 'bold', fontSize: 13 },
+  csvButtonLocked: {
+    backgroundColor: '#999',
+    paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6,
+  },
   list: { padding: 12 },
   item: {
     flexDirection: 'row', backgroundColor: '#fff',
