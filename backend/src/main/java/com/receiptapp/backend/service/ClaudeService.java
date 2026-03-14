@@ -43,25 +43,30 @@ public class ClaudeService {
             String base64Image = Base64.getEncoder().encodeToString(imageBytes);
 
             String prompt = """
-                この領収書画像を解析して、以下の情報をJSON形式で返してください。
-                
-                {
-                  "storeName": "店名",
-                  "receiptDate": "YYYY-MM-DD形式の日付",
-                  "amount": 金額(数値のみ),
-                  "accountItem": "勘定科目"
-                }
-                
-                勘定科目の選択肢:
-                消耗品費, 会議費, 接待交際費, 旅費交通費, 通信費,
-                広告宣伝費, 福利厚生費, 水道光熱費, 地代家賃, 雑費
-                
-                注意:
-                - 合計金額（税込）を amount に設定
-                - 日付が2桁年(例:26年)の場合は2000年代として解釈
-                - 不明な項目はnullを設定
-                - JSONのみ返答、説明文は不要
-                """;
+                    この領収書画像を解析して、以下の情報をJSON形式で返してください。
+                    
+                    {
+                      "storeName": "店名",
+                      "receiptDate": "YYYY-MM-DD形式の日付",
+                      "amount": 金額(数値のみ),
+                      "accountItem": "勘定科目"
+                    }
+                    
+                    【重要なルール】
+                    - storeName: レシート最上部の店舗名のみ（住所・電話番号は含めない）
+                    - receiptDate: 「取引日」「購入日」「お取扱日」の日付を使用
+                      ※ クレジットカードの有効期限は絶対に使わない
+                      ※ 2桁年(例:26年)は2000年代として解釈(2026年)
+                    - amount: 「合計」「合　計」の金額(税込)のみ
+                      ※ お預り・お釣り・クレジット取扱合計は使わない
+                      ※ カンマを除いた数値のみ
+                    - accountItem: 以下から1つ選択
+                      消耗品費, 会議費, 接待交際費, 旅費交通費, 通信費,
+                      広告宣伝費, 福利厚生費, 水道光熱費, 地代家賃, 雑費
+                    
+                    - 不明な項目はnullを設定
+                    - JSONのみ返答、説明文不要
+                    """;
 
             String requestJson = objectMapper.writeValueAsString(Map.of(
                     "model", "claude-haiku-4-5-20251001",
@@ -133,16 +138,16 @@ public class ClaudeService {
     public String suggestAccountItem(String storeName, Integer amount) {
         try {
             String prompt = String.format("""
-                以下の領収書情報から最も適切な勘定科目を1つだけ答えてください。
-                
-                店名: %s
-                金額: %d円
-                
-                選択肢:
-                %s
-                
-                回答は選択肢の中から1つだけ、余分な説明なしで答えてください。
-                """,
+                            以下の領収書情報から最も適切な勘定科目を1つだけ答えてください。
+                            
+                            店名: %s
+                            金額: %d円
+                            
+                            選択肢:
+                            %s
+                            
+                            回答は選択肢の中から1つだけ、余分な説明なしで答えてください。
+                            """,
                     storeName,
                     amount != null ? amount : 0,
                     String.join("\n", ACCOUNT_ITEMS)

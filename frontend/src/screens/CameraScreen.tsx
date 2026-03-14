@@ -58,15 +58,16 @@ export default function CameraScreen({ onNavigateToReview }: Props) {
     try {
       const resized = await ImageResizer.createResizedImage(
         imagePath,
-        1024,   // 最大幅
-        1024,   // 最大高さ
-        'JPEG',
-        80,     // 品質80%
+        1024,
+        1024,
+        'JPEG',  // ★ HEIC/PNG問わずJPEGに変換
+        80,
         0,
       );
       return resized.path;
-    } catch {
-      return imagePath; // 失敗時は元画像
+    } catch (e) {
+      console.warn('リサイズ失敗、元画像使用:', e);
+      return imagePath;
     }
   };
   const uploadAndAnalyze = async (localId: string, imagePath: string) => {
@@ -76,10 +77,9 @@ export default function CameraScreen({ onNavigateToReview }: Props) {
 
       // ④ アップロード
       const formData = new FormData();
-      formData.append('userId', USER_ID);
       formData.append('image', {
         uri: `file://${imagePath}`,
-        type: 'image/jpeg',
+        type: 'image/jpeg', // ★ 常にJPEGとして送信
         name: 'receipt.jpg',
       } as any);
 
