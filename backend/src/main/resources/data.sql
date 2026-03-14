@@ -1,11 +1,11 @@
-INSERT INTO users (id, email, password, plan_id, created_at)
-VALUES (
-           'test-user-001',
-           'test@example.com',
-           'password123',
-           'free',
-           NOW()
-       );
+-- INSERT INTO users (id, email, password, plan_id, created_at)
+-- VALUES (
+--            'test-user-001',
+--            'test@example.com',
+--            'password123',
+--            'free',
+--            NOW()
+--        );
 -- プランの初期データ
 INSERT INTO plans (id, name, monthly_limit, price_jpy)
 VALUES
