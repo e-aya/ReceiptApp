@@ -1,22 +1,23 @@
 package com.receiptapp.backend.service;
 
+import com.anthropic.client.AnthropicClient;
+import com.anthropic.client.okhttp.AnthropicOkHttpClient;
+import com.anthropic.models.messages.*;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class ClaudeService {
@@ -43,116 +44,91 @@ public class ClaudeService {
             String base64Image = Base64.getEncoder().encodeToString(imageBytes);
 
             String prompt = """
-                    この領収書画像を解析して、以下の情報をJSON形式で返してください。
-                    
-                    {
-                      "storeName": "店名",
-                      "receiptDate": "YYYY-MM-DD形式の日付",
-                      "amount": 金額(数値のみ),
-                      "accountItem": "勘定科目"
-                    }
-                    
-                    【storeName のルール】
-                    - レシート最上部の店舗名のみ
-                    - 支店名・号店名は含めてよい（例: LAWSON 宗像日の里五丁目店）
-                    - 以下は絶対に含めない:
-                      ・住所（市・区・町・丁目・番地など）
-                      ・電話番号
-                      ・URL
-                    - 濁点の誤読に注意（「た」と「だ」など）
-                      正しく読み取れない場合はひらがな・カタカナを慎重に確認
-                    
-                    【receiptDate のルール】
-                    - 「取引日」「購入日」「お取扱日」の日付を使用
-                    - クレジットカードの有効期限（****/**形式）は絶対に使わない
-                    - 年号の解釈（これだけ覚えてください）:
-                      ・4桁年(例:2026年) → そのまま使用
-                      ・2桁年(例:26年)   → 2000を足す（26→2026、09→2009）
-                      ・「平成」は絶対に使わない。現在は令和時代です。
-                      ・26年 = 2026年（平成26年=2014年ではない）
-                    
-                    【amount のルール】
-                    - 「合計」「合　計」の税込金額のみ
-                    - お預り・お釣り・クレジット取扱合計・買上金額は使わない
-                    - カンマを除いた整数のみ
-                    
-                    【accountItem のルール】
-                    以下の定義を上から順に判定し、最初に該当したものを選択:
-                    
-                    1. 消耗品費:
-                      ・コンビニ（LAWSON・FamilyMart・セブン・ミニストップ等）は金額に関わらず必ず消耗品費
-                      ・スーパー・ドラッグストア・文房具・日用品
-                    
-                    2. 旅費交通費: 電車・バス・タクシー・新幹線・宿泊
-                    
-                    3. 通信費: 携帯電話・インターネット・郵便
-                    
-                    4. 会議費:
-                    　・合計1,000円以下の飲食店・カフェ・ファストフード
-                      ・社内打合せでの軽食
-                    
-                    5. 接待交際費:
-                      ・合計1,000円超の飲食店・定食屋・レストラン・居酒屋
-                    
-                    6. 広告宣伝費: 広告・チラシ・販促品
-                    7. 福利厚生費: 従業員全員対象の飲食・健康診断
-                    8. 水道光熱費: 電気・ガス・水道
-                    9. 地代家賃: 家賃・駐車場代
-                    10. 雑費: 上記に該当しないもの
-                    
-                    - 不明な項目はnullを設定
-                    - JSONのみ返答、説明文不要
-                    """;
+                この領収書画像を解析して、以下の情報をJSON形式で返してください。
 
-            String requestJson = objectMapper.writeValueAsString(Map.of(
-                    "model", "claude-haiku-4-5-20251001",
-                    "max_tokens", 300,
-                    "messages", List.of(Map.of(
-                            "role", "user",
-                            "content", List.of(
-                                    Map.of(
-                                            "type", "image",
-                                            "source", Map.of(
-                                                    "type", "base64",
-                                                    "media_type", "image/jpeg",
-                                                    "data", base64Image
-                                            )
-                                    ),
-                                    Map.of(
-                                            "type", "text",
-                                            "text", prompt
-                                    )
-                            )
-                    ))
-            ));
+                {
+                  "storeName": "店名",
+                  "receiptDate": "YYYY-MM-DD形式の日付",
+                  "amount": 金額(数値のみ),
+                  "accountItem": "勘定科目"
+                }
 
-            HttpClient client = HttpClient.newHttpClient();
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create("https://api.anthropic.com/v1/messages"))
-                    .header("x-api-key", apiKey)
-                    .header("anthropic-version", "2023-06-01")
-                    .header("content-type", "application/json")
-                    .POST(HttpRequest.BodyPublishers.ofString(requestJson))
+                【storeName のルール】
+                - レシート最上部のブランド名＋支店名を含める
+                  例: 「LAWSON 宗像日の里五丁目店」「資さん 宗像店」
+                - 住所（市・区・町・丁目・番地など）・電話番号・URLは絶対に含めない
+                - 濁点の誤読に注意（「た」と「だ」など慎重に確認）
+
+                【receiptDate のルール】
+                - 「取引日」「購入日」「お取扱日」の日付を使用
+                - クレジットカードの有効期限（****/**形式）は絶対に使わない
+                - 年号の解釈:
+                  ・4桁年(例:2026年) → そのまま使用
+                  ・2桁年(例:26年)   → 2000を足す（26→2026）
+                  ・「平成」は使わない。2桁年は必ず2000+XX年として解釈
+
+                【amount のルール】
+                - 「合計」「合　計」の税込金額のみ
+                - お預り・お釣り・クレジット取扱合計・買上金額は使わない
+                - カンマを除いた整数のみ
+
+                【accountItem のルール】
+                以下の定義を上から順に判定し最初に該当したものを選択:
+                1. 消耗品費: コンビニ（LAWSON・FamilyMart・セブン等）は金額に関わらず必ず消耗品費。スーパー・ドラッグストア・日用品
+                2. 旅費交通費: 電車・バス・タクシー・新幹線・宿泊
+                3. 通信費: 携帯電話・インターネット・郵便
+                4. 会議費: 合計1,000円以下の飲食店・カフェ・ファストフード
+                5. 接待交際費: 合計1,000円超の飲食店・定食屋・レストラン・居酒屋
+                6. 広告宣伝費: 広告・チラシ・販促品
+                7. 福利厚生費: 従業員全員対象の飲食・健康診断
+                8. 水道光熱費: 電気・ガス・水道
+                9. 地代家賃: 家賃・駐車場代
+                10. 雑費: 上記に該当しないもの
+
+                - 不明な項目はnullを設定
+                - JSONのみ返答、説明文不要
+                """;
+
+            // ★ Anthropic Java SDK を使用
+            AnthropicClient client = AnthropicOkHttpClient.builder()
+                    .apiKey(apiKey)
                     .build();
 
-            HttpResponse<String> response = client.send(
-                    request, HttpResponse.BodyHandlers.ofString()
-            );
+            MessageCreateParams params = MessageCreateParams.builder()
+                    .model(Model.CLAUDE_HAIKU_4_5)
+                    .maxTokens(300L)
+                    .addUserMessageOfBlockParams(List.of(
+                            // ★ 画像とテキストを同一メッセージに
+                            ContentBlockParam.ofImage(
+                                    ImageBlockParam.builder()
+                                            .source(Base64ImageSource.builder()
+                                                    .mediaType(Base64ImageSource.MediaType.IMAGE_JPEG)
+                                                    .data(base64Image)
+                                                    .build())
+                                            .build()
+                            ),
+                            ContentBlockParam.ofText(
+                                    TextBlockParam.builder()
+                                            .text(prompt)
+                                            .build()
+                            )
+                    ))
+                    .build();
 
-            System.out.println("Claude OCR status: " + response.statusCode());
+            Message message = client.messages().create(params);
 
-            if (response.statusCode() != 200) {
-                System.err.println("Claude OCR エラー: " + response.body());
-                return ClaudeOcrResult.empty();
-            }
+            // レスポンス取得
+            String text = message.content().stream()
+                    .flatMap(block -> block.text().stream())  // Optional<TextBlock> → Stream
+                    .map(TextBlock::text)                      // TextBlock → String
+                    .findFirst()
+                    .orElse("");
 
-            JsonNode root = objectMapper.readTree(response.body());
-            String text = root.path("content").get(0)
-                    .path("text").asText().trim();
+            log.info("Claude OCR response: {}", text);
 
-            // JSON部分を抽出（```json ... ``` で囲まれている場合も対応）
+            // JSON部分を抽出
             String json = text
-                    .replaceAll("```json", "")
+                    .replaceAll("(?s)```json\\s*", "")
                     .replaceAll("```", "")
                     .trim();
 
@@ -165,7 +141,7 @@ public class ClaudeService {
                     validateAccountItem(result.path("accountItem").asText(null))
             );
         } catch (Exception e) {
-            System.err.println("Claude OCR 例外: " + e.getMessage());
+            log.error("Claude OCR 例外: {}", e.getMessage());
             return ClaudeOcrResult.empty();
         }
     }
