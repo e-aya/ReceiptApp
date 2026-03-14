@@ -77,6 +77,7 @@ export default function CameraScreen({ onNavigateToReview }: Props) {
 
       // ④ アップロード
       const formData = new FormData();
+      formData.append('userId', USER_ID);
       formData.append('image', {
         uri: `file://${imagePath}`,
         type: 'image/jpeg', // ★ 常にJPEGとして送信
