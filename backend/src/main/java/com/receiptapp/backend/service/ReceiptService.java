@@ -7,6 +7,7 @@ import com.receiptapp.backend.repository.ReceiptRepository;
 import com.receiptapp.backend.repository.UserRepository;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -14,6 +15,7 @@ import java.io.IOException;
 import java.util.Arrays;
 import java.util.List;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class ReceiptService {
@@ -54,7 +56,7 @@ public class ReceiptService {
     }
 
     @Transactional
-    public ReceiptResponse analyze(String receiptId) {
+    public ReceiptResponse analyze(String receiptId) throws Exception {
 
         Receipt receipt = receiptRepository.findById(receiptId)
                 .orElseThrow(() -> new RuntimeException("領収書が見つかりません"));
@@ -63,7 +65,8 @@ public class ReceiptService {
         receiptRepository.save(receipt);
 
         try {
-            // ★ Claude一発でOCR+仕訳
+            // ★ まずClaudeで解析
+            log.info("Claude APIで解析開始: {}", receiptId);
             ClaudeService.ClaudeOcrResult result =
                     claudeService.analyzeReceipt(receipt.getImagePath());
 
@@ -77,51 +80,34 @@ public class ReceiptService {
             receipt.setAccountItem(result.accountItem());
             receipt.setStatus("done");
             receipt.setAnalyzedAt(java.time.LocalDateTime.now());
+            log.info("Claude API解析成功: {}", receiptId);
 
-        } catch (Exception e) {
-            receipt.setStatus("error");
-            receiptRepository.save(receipt);
-            throw e;
-        }
+        } catch (Exception claudeEx) {
+            // ★ Claude失敗 → Vision APIにフォールバック
+            log.warn("Claude API失敗、Vision APIにフォールバック: {}", claudeEx.getMessage());
+            try {
+                String rawText = visionService.extractText(receipt.getImagePath());
+                List<String> lines = Arrays.asList(rawText.split("\n"));
 
-        receiptRepository.save(receipt);
-        return toResponse(receipt);
-    }
+                receipt.setStoreName(ocrParserService.parseStoreName(lines));
+                receipt.setReceiptDate(
+                        ocrParserService.parseDate(lines) != null
+                                ? fixYear(ocrParserService.parseDate(lines))
+                                : null
+                );
+                receipt.setAmount(ocrParserService.parseAmount(lines));
+                receipt.setAccountItem("消耗品費"); // Vision APIは仕訳不可のためデフォルト
+                receipt.setStatus("done");
+                receipt.setAnalyzedAt(java.time.LocalDateTime.now());
+                log.info("Vision APIフォールバック成功: {}", receiptId);
 
-    @Transactional
-    public ReceiptResponse analyzeGoogle(String receiptId) throws Exception {
-
-
-        Receipt receipt = receiptRepository.findById(receiptId)
-                .orElseThrow(() -> new RuntimeException("領収書が見つかりません"));
-
-        receipt.setStatus("analyzing");
-        receiptRepository.save(receipt);
-
-        try {
-            String rawText = visionService.extractText(receipt.getImagePath());
-            //System.out.println(rawText);
-            //String rawText = "毎度ありがとうございます\n名物 銀河の\nチャンポン\n北九州市八幡西区八枝5丁目4-20\nTEL 093-602-2040\n01 マネージャー\n2025/12/13\n14:12\n454290\n1名様\n銀河のチャンポン\n¥1,140\nトンカツのせチャンポン\n¥1,350\n2点\n内税対象計\n¥2,490\n内合現\n内税\n10%\n¥226\n合計\n¥2,490\n現金\nお釣\n¥2,500\n¥10\n※印は軽減税率対象商品です。";
-
-            List<String> lines = Arrays.asList(rawText.split("\n"));
-
-            receipt.setStoreName(ocrParserService.parseStoreName(lines));
-            receipt.setReceiptDate(ocrParserService.parseDate(lines));
-            receipt.setAmount(ocrParserService.parseAmount(lines));
-
-            // ★ AI自動仕訳
-            String accountItem = claudeService.suggestAccountItem(
-                    receipt.getStoreName(),
-                    receipt.getAmount()
-            );
-            receipt.setAccountItem(accountItem);
-
-            receipt.setStatus("done");
-            receipt.setAnalyzedAt(java.time.LocalDateTime.now());
-        } catch (Exception e) {
-            receipt.setStatus("error");
-            receiptRepository.save(receipt);
-            throw e;
+            } catch (Exception visionEx) {
+                // ★ 両方失敗
+                log.error("Vision APIも失敗: {}", visionEx.getMessage());
+                receipt.setStatus("error");
+                receiptRepository.save(receipt);
+                throw visionEx;
+            }
         }
 
         receiptRepository.save(receipt);
