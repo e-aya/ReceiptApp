@@ -54,7 +54,7 @@ public class ReceiptService {
     }
 
     @Transactional
-    public ReceiptResponse analyze(String receiptId) throws Exception {
+    public ReceiptResponse analyze(String receiptId) {
 
         Receipt receipt = receiptRepository.findById(receiptId)
                 .orElseThrow(() -> new RuntimeException("領収書が見つかりません"));
@@ -146,14 +146,11 @@ public class ReceiptService {
 
     // ★ 年補正メソッドを追加
     private java.time.LocalDate fixYear(java.time.LocalDate date) {
-        // 2000年以前の日付は西暦下2桁として補正
-        // 例: 2014-03-09 → 26年3月9日の誤解釈 → 2026-03-09
-        if (date.getYear() < 2000) {
-            // 平成解釈されたケース: 平成XX年 = 1988+XX
-            // 令和解釈されたケース: 令和XX年 = 2018+XX
-            // いずれも「2桁年をそのまま西暦下2桁」として再解釈
-            int twoDigitYear = date.getYear() % 100;
-            int correctedYear = 2000 + twoDigitYear;
+        int year = date.getYear();
+        // 平成解釈(1989-2018)または昭和解釈された場合
+        // 平成XX年 = 1988+XX → 2桁年XX → 2000+XX = 平成年+12
+        if (year >= 1989 && year < 2020) {
+            int correctedYear = year + 12; // 例: 2014→2026
             return date.withYear(correctedYear);
         }
         return date;
