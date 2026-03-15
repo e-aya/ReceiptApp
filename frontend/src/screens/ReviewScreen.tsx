@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import {
   View, Text, StyleSheet, FlatList,
-  TouchableOpacity, Image, SafeAreaView, Alert, Modal,
+  TouchableOpacity, Image, Alert, Modal,
 } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useReceipts, receiptStore } from '../store/receiptStore';
 import { Receipt } from '../types';
 import { exportCsv, CsvFormat } from '../utils/csvExport';
@@ -50,33 +51,20 @@ export default function ReviewScreen({ onBack, onEdit, user, onLogout }: Props) 
           {item.status === 'done' && '✅ 解析完了'}
           {item.status === 'error' && '❌ エラー'}
         </Text>
+        {/* 解析結果描画エリア */}
         <Text style={styles.itemDetail}>🏪 {item.storeName ?? '未取得'}</Text>
         <Text style={styles.itemDetail}>📅 {item.date ?? '未取得'}</Text>
-        <Text style={styles.itemDetail}>
-          💴 {item.amount ? `¥${item.amount}` : '未取得'}
-        </Text>
-        {/* ★ 勘定科目表示 */}
-        <Text style={styles.itemDetail}>
-          📒 {item.accountItem ?? '勘定科目未設定'}
-        </Text>
-        <Text style={styles.itemTime}>
-          {item.capturedAt.toLocaleTimeString('ja-JP')}
-        </Text>
+        <Text style={styles.itemDetail}>💴 {item.amount ? `¥${item.amount}` : '未取得'}</Text>
+        <Text style={styles.itemDetail}>📒 {item.accountItem ?? '勘定科目未設定'}</Text>
+        <Text style={styles.itemTime}>{item.capturedAt.toLocaleTimeString('ja-JP')}</Text>
       </View>
       <View style={styles.itemActions}>
-        {/* ★ 編集ボタン（解析完了時のみ） */}
         {item.status === 'done' && (
-          <TouchableOpacity
-            style={styles.editButton}
-            onPress={() => onEdit(item.id)}
-          >
+          <TouchableOpacity style={styles.editButton} onPress={() => onEdit(item.id)}>
             <Text style={styles.editText}>✏️</Text>
           </TouchableOpacity>
         )}
-        <TouchableOpacity
-          style={styles.deleteButton}
-          onPress={() => handleDelete(item.id)}
-        >
+        <TouchableOpacity style={styles.deleteButton} onPress={() => handleDelete(item.id)}>
           <Text style={styles.deleteText}>🗑</Text>
         </TouchableOpacity>
       </View>
@@ -87,13 +75,20 @@ export default function ReviewScreen({ onBack, onEdit, user, onLogout }: Props) 
   const isPaidUser = false; // TODO: 認証実装後にユーザープランから取得
 
   return (
-    <SafeAreaView style={styles.container}>
-      {/* ヘッダー */}
-      <View style={styles.header}>
+    <SafeAreaProvider style={styles.container}>
+      {/* ヘッダー 1行目: 戻る + タイトル + ログアウト */}
+      <View style={styles.headerTop}>
         <TouchableOpacity onPress={onBack} style={styles.backButton}>
           <Text style={styles.backText}>← 撮影に戻る</Text>
         </TouchableOpacity>
         <Text style={styles.title}>領収書済み ({receipts.length}枚)</Text>
+        <TouchableOpacity onPress={onLogout} style={styles.logoutButton}>
+          <Text style={styles.logoutText}>ログアウト</Text>
+        </TouchableOpacity>
+      </View>
+      {/* ヘッダー 2行目: CSV出力ボタン */}
+      <View style={styles.headerBottom}>
+        <Text style={styles.userEmail}>{user?.email ?? ''}</Text>
         {/* CSVボタン部分 */}
         {isPaidUser ? (
           <TouchableOpacity
@@ -113,11 +108,7 @@ export default function ReviewScreen({ onBack, onEdit, user, onLogout }: Props) 
             <Text style={styles.csvText}>🔒 CSV出力</Text>
           </TouchableOpacity>
         )}
-        <TouchableOpacity onPress={onLogout} style={styles.logoutButton}>
-          <Text style={styles.logoutText}>ログアウト</Text>
-        </TouchableOpacity>
       </View>
-
       {/* リスト */}
       {receipts.length === 0 ? (
         <View style={styles.empty}>
@@ -161,21 +152,34 @@ export default function ReviewScreen({ onBack, onEdit, user, onLogout }: Props) 
           </View>
         </View>
       </Modal>
-    </SafeAreaView>
+    </SafeAreaProvider>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f5f5f5' },
-  header: {
+
+  // ★ ヘッダー2行構成
+  headerTop: {
     flexDirection: 'row', alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#fff', paddingHorizontal: 16, paddingVertical: 12,
+    backgroundColor: '#fff',
+    paddingHorizontal: 16, paddingTop: 12, paddingBottom: 6,
+    borderBottomWidth: 0,
+  },
+  headerBottom: {
+    flexDirection: 'row', alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#fff',
+    paddingHorizontal: 16, paddingBottom: 10,
     borderBottomWidth: 1, borderBottomColor: '#eee',
   },
   backButton: { padding: 4 },
-  backText: { color: '#00C853', fontSize: 15 },
-  title: { fontSize: 16, fontWeight: 'bold' },
+  backText: { color: '#00C853', fontSize: 14 },
+  title: { fontSize: 15, fontWeight: 'bold' },
+  logoutButton: { padding: 4 },
+  logoutText: { color: '#999', fontSize: 13 },
+  userEmail: { color: '#999', fontSize: 11, flex: 1 },
   csvButton: {
     backgroundColor: '#00C853',
     paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6,
@@ -186,6 +190,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#999',
     paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6,
   },
+  // リスト
   list: { padding: 12 },
   item: {
     flexDirection: 'row', backgroundColor: '#fff',
@@ -195,16 +200,34 @@ const styles = StyleSheet.create({
   },
   thumbnail: { width: 70, height: 90, borderRadius: 4, backgroundColor: '#eee' },
   itemInfo: { flex: 1, paddingHorizontal: 10 },
-  itemStatus: { fontSize: 13, fontWeight: 'bold', marginBottom: 4 },
-  itemDetail: { fontSize: 13, color: '#333', marginBottom: 2 },
+  itemStatus: { fontSize: 13, fontWeight: 'bold', marginBottom: 6 },
+
+  // ★ ラベル付き行
+  detailRow: {
+    flexDirection: 'row', alignItems: 'center', marginBottom: 3,
+  },
+  detailLabel: {
+    fontSize: 11, color: '#999', width: 30,
+    backgroundColor: '#f5f5f5', borderRadius: 3,
+    paddingHorizontal: 4, paddingVertical: 1,
+    marginRight: 6, textAlign: 'center',
+  },
+  itemDetail: { fontSize: 13, color: '#333', flex: 1 },
+  accountItemText: { color: '#00C853', fontWeight: 'bold' },
+  accountItemEmpty: { color: '#ccc' },
   itemTime: { fontSize: 11, color: '#999', marginTop: 4 },
+
+  // アクション
   itemActions: { justifyContent: 'space-between', alignItems: 'center' },
   editButton: { padding: 4, marginBottom: 8 },
   editText: { fontSize: 18 },
   deleteButton: { padding: 4 },
   deleteText: { color: '#999', fontSize: 18 },
+
+  // 空
   empty: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   emptyText: { color: '#999', fontSize: 16 },
+
   // モーダル
   modalOverlay: {
     flex: 1, backgroundColor: 'rgba(0,0,0,0.5)',
@@ -225,6 +248,4 @@ const styles = StyleSheet.create({
   formatText: { color: '#00C853', fontWeight: 'bold', fontSize: 16 },
   cancelButton: { padding: 16, alignItems: 'center' },
   cancelText: { color: '#999', fontSize: 15 },
-  logoutButton: { padding: 4 },
-  logoutText: { color: '#999', fontSize: 13 },
 });
