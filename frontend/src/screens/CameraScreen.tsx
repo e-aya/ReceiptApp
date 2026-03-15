@@ -8,6 +8,7 @@ import {
 } from 'react-native-vision-camera';
 import { receiptStore } from '../store/receiptStore';
 import ImageResizer from 'react-native-image-resizer';
+import { initGoogleSignIn, uploadReceiptToDrive } from '../utils/googleDrive';
 
 // ★ 本番APIのURL
 const API_BASE_URL = 'https://receiptapp-api-service-production.up.railway.app';
@@ -27,6 +28,7 @@ export default function CameraScreen({ onNavigateToReview }: Props) {
 
   useEffect(() => {
     if (!hasPermission) requestPermission();
+    initGoogleSignIn(); // ★ 追加
   }, [hasPermission]);
 
   const handleCapture = async () => {
@@ -45,7 +47,7 @@ export default function CameraScreen({ onNavigateToReview }: Props) {
       const optimizedPath = await optimizeImage(photo.path);
 
       // ③ バックグラウンドでアップロード＋解析
-      uploadAndAnalyze(receipt.id, photo.path);
+      uploadAndAnalyze(receipt.id, optimizedPath);
 
     } catch (error) {
       console.error('撮影エラー:', error);
@@ -110,6 +112,23 @@ export default function CameraScreen({ onNavigateToReview }: Props) {
         amount: analyzeData.amount ?? null,
         accountItem: analyzeData.accountItem ?? null, // ★ 追加
       });
+
+      // uploadAndAnalyze内の解析完了後に追加
+      receiptStore.updateReceipt(localId, {
+        status: 'done',
+        storeName: analyzeData.storeName ?? '取得失敗',
+        date: analyzeData.receiptDate ?? null,
+        amount: analyzeData.amount ?? null,
+        accountItem: analyzeData.accountItem ?? null,
+      });
+
+      // ★ Googleドライブに保存（バックグラウンド）
+      uploadReceiptToDrive(
+        imagePath,
+        analyzeData.storeName,
+        analyzeData.receiptDate,
+        analyzeData.amount
+      ).catch(e => console.warn('Drive保存失敗:', e));
 
     } catch (error) {
       console.error('解析エラー:', error);
