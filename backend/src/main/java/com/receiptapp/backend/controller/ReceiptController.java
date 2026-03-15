@@ -2,6 +2,7 @@ package com.receiptapp.backend.controller;
 
 import com.receiptapp.backend.dto.ReceiptResponse;
 import com.receiptapp.backend.entity.Plan;
+import com.receiptapp.backend.entity.UsageLog;
 import com.receiptapp.backend.entity.User;
 import com.receiptapp.backend.service.ReceiptService;
 import com.receiptapp.backend.service.UsageLimitException;
@@ -72,16 +73,19 @@ public class ReceiptController {
 
     // 今月の使用量取得
     @GetMapping("/usage")
-    public ResponseEntity<?> getUsage(@RequestParam("userId") String userId,
-                                      jakarta.servlet.http.HttpServletRequest req) {
+    public ResponseEntity<?> getUsage(@RequestParam("userId") String userId) {
         try {
             User user = userRepository.findById(userId)
                     .orElseThrow(() -> new RuntimeException("ユーザーが見つかりません"));
 
+            // 今月のyearMonth文字列 例: "2026-03"
+            String yearMonth = java.time.YearMonth.now().toString();
+
             // 今月の使用回数
-            java.time.LocalDateTime startOfMonth =
-                    java.time.LocalDateTime.now().withDayOfMonth(1).withHour(0).withMinute(0).withSecond(0);
-            long usedCount = usageLogRepository.countByUserAndCreatedAtAfter(user, startOfMonth);
+            int usedCount = usageLogRepository
+                    .findByUserAndYearMonth(user, yearMonth)
+                    .map(UsageLog::getCount)
+                    .orElse(0);
 
             // プランの上限取得
             Plan plan = planRepository.findById(user.getPlanId()).orElse(null);

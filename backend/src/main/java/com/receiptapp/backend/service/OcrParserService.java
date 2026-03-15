@@ -44,7 +44,7 @@ public class OcrParserService {
                 "/\\d{2,4}-\\d{3,4}-\\d{4}/",
                 "/^\\d{4}[\\/\\-]\\d{1,2}[\\/\\-]\\d{1,2}/",
                 "/^(領収書|receipt|invoice|レシート)/i",
-                "/^(合計|小計|税込|税抜|消費税|内税|外税|お釣|現金|クレジット|Verifone)/i",
+                "/^(合計|小計|税込|税抜|消費税|内税|外税|お釣|現金|クレジット|VeriFone)/i",
                 "/^[\\d¥￥,.\\s]+$/",
                 "/^[-=*＊＝]{3,}/",
                 "/ありがとう/",
@@ -183,26 +183,11 @@ public class OcrParserService {
         }
 
         // 小計行でも試みる
-        int subTotalIndex = -1;
         for (int i = lines.size() - 1; i >= 0; i--) {
             String t = lines.get(i).trim()
                     .replace("\u3000", " ").replaceAll("\\s+", "");
             if (t.startsWith("小計")) {
-                subTotalIndex = i;
                 break;
-            }
-        }
-
-        if (subTotalIndex >= 0) {
-            String subLine = lines.get(subTotalIndex);
-            Integer val = extractAmount(subLine, yenPattern, circlePattern);
-            if (val != null) return val;
-
-            for (int i = subTotalIndex + 1; i < Math.min(subTotalIndex + 5, lines.size()); i++) {
-                String line = lines.get(i).trim();
-                if (skipWords.stream().anyMatch(line::contains)) continue;
-                val = extractAmount(line, yenPattern, circlePattern);
-                if (val != null) return val;
             }
         }
 

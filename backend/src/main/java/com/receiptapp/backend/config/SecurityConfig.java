@@ -5,6 +5,7 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
+import org.jspecify.annotations.NonNull;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -25,7 +26,7 @@ public class SecurityConfig {
     private final JwtUtil jwtUtil;
 
     @Bean
-    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+    public SecurityFilterChain filterChain(HttpSecurity http) {
         http
                 .csrf(AbstractHttpConfigurer::disable)
                 .sessionManagement(s ->
@@ -42,8 +43,8 @@ public class SecurityConfig {
     public OncePerRequestFilter jwtFilter() {
         return new OncePerRequestFilter() {
             @Override
-            protected void doFilterInternal(HttpServletRequest req,
-                                            HttpServletResponse res, FilterChain chain)
+            protected void doFilterInternal(@NonNull HttpServletRequest req,
+                                            @NonNull HttpServletResponse res, @NonNull FilterChain chain)
                     throws java.io.IOException, jakarta.servlet.ServletException {
 
                 String header = req.getHeader("Authorization");

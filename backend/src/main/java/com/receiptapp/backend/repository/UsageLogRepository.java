@@ -27,5 +27,6 @@ public interface UsageLogRepository extends JpaRepository<UsageLog, Long> {
             @Param("yearMonth") String yearMonth
     );
 
-    long countByUserAndCreatedAtAfter(User user, java.time.LocalDateTime dateTime);
+    // ✅ 追加
+    Optional<UsageLog> findByUserAndYearMonth(User user, String yearMonth);
 }

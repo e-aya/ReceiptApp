@@ -9,7 +9,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-import org.springframework.web.reactive.function.client.WebClient;
 
 import java.nio.file.Files;
 import java.nio.file.Paths;
@@ -21,7 +20,6 @@ import java.util.List;
 @RequiredArgsConstructor
 public class ClaudeService {
 
-    private final WebClient.Builder webClientBuilder;
     private final ObjectMapper objectMapper;
 
     @Value("${claude.api-key}")
@@ -144,8 +142,5 @@ public class ClaudeService {
 
     // OCR結果DTO
     public record ClaudeOcrResult(String storeName, String receiptDate, Integer amount, String accountItem) {
-        public static ClaudeOcrResult empty() {
-            return new ClaudeOcrResult(null, null, null, "消耗品費");
-        }
     }
 }

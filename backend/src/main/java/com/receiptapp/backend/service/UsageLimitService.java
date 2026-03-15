@@ -40,14 +40,16 @@ public class UsageLimitService {
         // 上限チェック
         if (currentCount > plan.getMonthlyLimit()) {
             // カウントを戻す
-            log.ifPresent(l -> {
-                l.setCount(l.getCount() - 1);
-                usageLogRepository.save(l);
-            });
+            log.ifPresent(this::accept);
             throw new UsageLimitException(
                     plan.getMonthlyLimit(),
                     user.getPlanId()
             );
         }
+    }
+
+    private void accept(UsageLog l) {
+        l.setCount(l.getCount() - 1);
+        usageLogRepository.save(l);
     }
 }
