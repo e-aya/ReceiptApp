@@ -25,6 +25,7 @@ export default function App() {
   }, []);
 
   const handleAuthSuccess = async (authUser: AuthUser) => {
+    console.log('Auth success:', authUser.userId, authUser.token?.substring(0, 20));
     await AsyncStorage.setItem('authUser', JSON.stringify(authUser));
     setUser(authUser);
     setScreen('camera');

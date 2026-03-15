@@ -76,6 +76,10 @@ export default function CameraScreen({ onNavigateToReview, userId, token }: Prop
   };
   const uploadAndAnalyze = async (localId: string, imagePath: string) => {
     try {
+      console.log('=== DEBUG ===');
+      console.log('userId:', userId);
+      console.log('token length:', token?.length ?? 0);
+      console.log('token preview:', token ? token.substring(0, 30) : 'EMPTY');
       // ステータスを「解析中」に更新
       receiptStore.updateReceipt(localId, { status: 'analyzing' });
 

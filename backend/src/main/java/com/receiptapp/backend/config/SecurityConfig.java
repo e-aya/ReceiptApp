@@ -52,6 +52,21 @@ public class SecurityConfig {
                     if (jwtUtil.validateToken(token)) {
                         String userId = jwtUtil.extractUserId(token);
                         req.setAttribute("userId", userId);
+
+                        // ★ SecurityContextに認証情報をセット（これがないと403になる）
+                        org.springframework.security.authentication.UsernamePasswordAuthenticationToken auth =
+                                new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(
+                                        userId, null,
+                                        java.util.Collections.emptyList()
+                                );
+                        auth.setDetails(
+                                new org.springframework.security.web.authentication
+                                        .WebAuthenticationDetailsSource()
+                                        .buildDetails(req)
+                        );
+                        org.springframework.security.core.context.SecurityContextHolder
+                                .getContext()
+                                .setAuthentication(auth);
                     }
                 }
                 chain.doFilter(req, res);
