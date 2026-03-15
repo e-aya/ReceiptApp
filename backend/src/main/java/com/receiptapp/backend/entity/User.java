@@ -16,8 +16,14 @@ public class User {
     @Column(nullable = false, unique = true)
     private String email;
 
-    @Column(nullable = false)
-    private String password;
+    @Column
+    private String password; // ★ Googleログインはnull可
+
+    @Column(unique = true)
+    private String googleId; // ★ 追加
+
+    @Column
+    private String name; // ★ 追加（表示名）
 
     // プラン: free / pro / business
     @Column(nullable = false)

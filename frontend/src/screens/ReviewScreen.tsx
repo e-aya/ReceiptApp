@@ -10,10 +10,12 @@ import { exportCsv, CsvFormat } from '../utils/csvExport';
 // Propsに onEdit を追加
 interface Props {
   onBack: () => void;
-  onEdit: (id: string) => void;  // ★ 追加
+  onEdit: (id: string) => void;
+  user: { name: string; email: string; planId: string } | null; // ★追加
+  onLogout: () => void; // ★追加
 }
 
-export default function ReviewScreen({ onBack, onEdit }: Props) {
+export default function ReviewScreen({ onBack, onEdit, user, onLogout }: Props) {
   const receipts = useReceipts();
   const [showFormatModal, setShowFormatModal] = useState(false);
 
@@ -111,6 +113,9 @@ export default function ReviewScreen({ onBack, onEdit }: Props) {
             <Text style={styles.csvText}>🔒 CSV出力</Text>
           </TouchableOpacity>
         )}
+        <TouchableOpacity onPress={onLogout} style={styles.logoutButton}>
+          <Text style={styles.logoutText}>ログアウト</Text>
+        </TouchableOpacity>
       </View>
 
       {/* リスト */}
@@ -135,9 +140,9 @@ export default function ReviewScreen({ onBack, onEdit }: Props) {
               出力形式を選択（{doneCount}件）
             </Text>
             {[
-              { key: 'yayoi',         label: '弥生会計' },
-              { key: 'moneyforward',  label: 'マネーフォワード' },
-              { key: 'freee',         label: 'freee' },
+              { key: 'yayoi', label: '弥生会計' },
+              { key: 'moneyforward', label: 'マネーフォワード' },
+              { key: 'freee', label: 'freee' },
             ].map(f => (
               <TouchableOpacity
                 key={f.key}
@@ -220,4 +225,6 @@ const styles = StyleSheet.create({
   formatText: { color: '#00C853', fontWeight: 'bold', fontSize: 16 },
   cancelButton: { padding: 16, alignItems: 'center' },
   cancelText: { color: '#999', fontSize: 15 },
+  logoutButton: { padding: 4 },
+  logoutText: { color: '#999', fontSize: 13 },
 });

@@ -13,13 +13,15 @@ import { initGoogleSignIn, uploadReceiptToDrive } from '../utils/googleDrive';
 // ★ 本番APIのURL
 const API_BASE_URL = 'https://receiptapp-api-service-production.up.railway.app';
 //const API_BASE_URL = 'http://localhost:8080';
-const USER_ID = 'test-user-001';
+//const USER_ID = 'test-user-001';
 
 interface Props {
   onNavigateToReview: () => void;
+  userId: string;
+  token: string;
 }
 
-export default function CameraScreen({ onNavigateToReview }: Props) {
+export default function CameraScreen({ onNavigateToReview, userId, token }: Props) {
   const { hasPermission, requestPermission } = useCameraPermission();
   const device = useCameraDevice('back');
   const camera = useRef<Camera>(null);
@@ -79,7 +81,7 @@ export default function CameraScreen({ onNavigateToReview }: Props) {
 
       // ④ アップロード
       const formData = new FormData();
-      formData.append('userId', USER_ID);
+      formData.append('userId', userId);
       formData.append('image', {
         uri: `file://${imagePath}`,
         type: 'image/jpeg', // ★ 常にJPEGとして送信
@@ -88,6 +90,9 @@ export default function CameraScreen({ onNavigateToReview }: Props) {
 
       const uploadRes = await fetch(`${API_BASE_URL}/api/receipts/upload`, {
         method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`, // ★認証トークン追加
+        },
         body: formData,
       });
 
@@ -98,7 +103,13 @@ export default function CameraScreen({ onNavigateToReview }: Props) {
       // ⑤ OCR解析
       const analyzeRes = await fetch(
         `${API_BASE_URL}/api/receipts/${serverId}/analyze`,
-        { method: 'POST' }
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`, // ★認証トークン追加
+            'Content-Type': 'application/json',
+          },
+        }
       );
 
       if (!analyzeRes.ok) throw new Error(`Analyze failed: ${analyzeRes.status}`);
