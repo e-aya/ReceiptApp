@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity,
-  ActivityIndicator, SafeAreaView, Alert,
+  ActivityIndicator, Alert,
 } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import {
   Camera, useCameraDevice, useCameraPermission,
 } from 'react-native-vision-camera';
@@ -180,9 +181,9 @@ export default function CameraScreen({ onNavigateToReview, userId, token }: Prop
         photo={true}
       />
       <View style={styles.guide} />
-      <SafeAreaView style={styles.header}>
+      <SafeAreaProvider style={styles.header}>
         <Text style={styles.headerText}>領収書を枠内に合わせて撮影</Text>
-      </SafeAreaView>
+      </SafeAreaProvider>
       {capturedCount > 0 && (
         <TouchableOpacity style={styles.badge} onPress={onNavigateToReview}>
           <Text style={styles.badgeText}>📋 {capturedCount}枚 →</Text>

@@ -9,10 +9,12 @@
 import React, { useState } from 'react';
 import {
   View, Text, StyleSheet, TextInput,
-  TouchableOpacity, SafeAreaView, ScrollView,
+  TouchableOpacity, ScrollView,
   Alert, Image,
 } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { receiptStore } from '../store/receiptStore';
+import DateTimePicker from '@react-native-community/datetimepicker';
 
 // 勘定科目マスタ
 const ACCOUNT_ITEMS = [
@@ -38,27 +40,38 @@ export default function EditScreen({ receiptId, onBack }: Props) {
 
   if (!receipt) {
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaProvider style={styles.container}>
         <Text>領収書が見つかりません</Text>
-      </SafeAreaView>
+      </SafeAreaProvider>
     );
   }
 
+  // ★ 日付をDateオブジェクトで管理
+  const parseInitialDate = (dateStr: string): Date => {
+    const d = new Date(dateStr);
+    return isNaN(d.getTime()) ? new Date() : d;
+  };
   const [storeName, setStoreName]   = useState(receipt.storeName ?? '');
-  const [date, setDate]             = useState(receipt.date ?? '');
+  //const [date, setDate]             = useState(receipt.date ?? '');
+  const [date, setDate]           = useState<Date>(parseInitialDate(receipt.date ?? ''));
+  const [showDatePicker, setShowDatePicker] = useState(false);
   const [amount, setAmount]         = useState(receipt.amount?.toString() ?? '');
   const [accountItem, setAccountItem] = useState(receipt.accountItem ?? '');
   const [memo, setMemo]             = useState('');
+
+  // 日付をYYYY-MM-DD文字列に変換するヘルパー
+  const formatDate = (d: Date): string =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
   const handleSave = () => {
     if (!storeName.trim()) {
       Alert.alert('エラー', '店名を入力してください');
       return;
     }
-    if (!date.trim()) {
-      Alert.alert('エラー', '日付を入力してください');
-      return;
-    }
+    // if (!date.trim()) {
+    //   Alert.alert('エラー', '日付を入力してください');
+    //   return;
+    // }
     const amountNum = parseInt(amount.replace(/,/g, ''), 10);
     if (isNaN(amountNum) || amountNum <= 0) {
       Alert.alert('エラー', '正しい金額を入力してください');
@@ -71,7 +84,7 @@ export default function EditScreen({ receiptId, onBack }: Props) {
 
     receiptStore.updateReceipt(receiptId, {
       storeName: storeName.trim(),
-      date: date.trim(),
+      date: formatDate(date),  // ★ Date → 文字列変換
       amount: amountNum,
       accountItem,
     });
@@ -82,7 +95,7 @@ export default function EditScreen({ receiptId, onBack }: Props) {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaProvider style={styles.container}>
       {/* ヘッダー */}
       <View style={styles.header}>
         <TouchableOpacity onPress={onBack} style={styles.backButton}>
@@ -117,14 +130,26 @@ export default function EditScreen({ receiptId, onBack }: Props) {
         {/* 日付 */}
         <View style={styles.field}>
           <Text style={styles.label}>📅 日付</Text>
-          <TextInput
-            style={styles.input}
-            value={date}
-            onChangeText={setDate}
-            placeholder="例: 2026-03-08"
-            placeholderTextColor="#bbb"
-            keyboardType="numeric"
-          />
+          <TouchableOpacity
+            style={styles.dateButton}
+            onPress={() => setShowDatePicker(true)}
+          >
+            <Text style={styles.dateButtonText}>{formatDate(date)}</Text>
+            <Text style={styles.dateButtonIcon}>📅</Text>
+          </TouchableOpacity>
+          {showDatePicker && (
+            <DateTimePicker
+              value={date}
+              mode="date"
+              display="default"
+              locale="ja-JP"
+              maximumDate={new Date()}
+              onChange={(event, selectedDate) => {
+                setShowDatePicker(false);
+                if (selectedDate) setDate(selectedDate);
+              }}
+            />
+          )}
         </View>
 
         {/* 金額 */}
@@ -177,7 +202,7 @@ export default function EditScreen({ receiptId, onBack }: Props) {
           />
         </View>
       </ScrollView>
-    </SafeAreaView>
+    </SafeAreaProvider>
   );
 }
 
@@ -225,4 +250,11 @@ const styles = StyleSheet.create({
   },
   accountChipText: { fontSize: 13, color: '#555' },
   accountChipTextSelected: { color: '#fff', fontWeight: 'bold' },
+  dateButton: {
+    backgroundColor: '#fff', borderWidth: 1, borderColor: '#ddd',
+    borderRadius: 8, paddingHorizontal: 14, paddingVertical: 12,
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+  },
+  dateButtonText: { fontSize: 16, color: '#333' },
+  dateButtonIcon: { fontSize: 16 },
 });
