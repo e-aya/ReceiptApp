@@ -1,6 +1,8 @@
 package com.receiptapp.backend.controller;
 
 import com.receiptapp.backend.dto.ReceiptResponse;
+import com.receiptapp.backend.entity.Plan;
+import com.receiptapp.backend.entity.User;
 import com.receiptapp.backend.service.ReceiptService;
 import com.receiptapp.backend.service.UsageLimitException;
 import lombok.RequiredArgsConstructor;
@@ -18,6 +20,9 @@ import java.util.Map;
 public class ReceiptController {
 
     private final ReceiptService receiptService;
+    private final com.receiptapp.backend.repository.UsageLogRepository usageLogRepository;
+    private final com.receiptapp.backend.repository.PlanRepository planRepository;
+    private final com.receiptapp.backend.repository.UserRepository userRepository;
 
     // 画像アップロード
     @PostMapping("/upload")
@@ -62,6 +67,34 @@ public class ReceiptController {
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    // 今月の使用量取得
+    @GetMapping("/usage")
+    public ResponseEntity<?> getUsage(@RequestParam("userId") String userId,
+                                      jakarta.servlet.http.HttpServletRequest req) {
+        try {
+            User user = userRepository.findById(userId)
+                    .orElseThrow(() -> new RuntimeException("ユーザーが見つかりません"));
+
+            // 今月の使用回数
+            java.time.LocalDateTime startOfMonth =
+                    java.time.LocalDateTime.now().withDayOfMonth(1).withHour(0).withMinute(0).withSecond(0);
+            long usedCount = usageLogRepository.countByUserAndCreatedAtAfter(user, startOfMonth);
+
+            // プランの上限取得
+            Plan plan = planRepository.findById(user.getPlanId()).orElse(null);
+            long limit = plan != null ? plan.getMonthlyLimit() : 30;
+
+            return ResponseEntity.ok(Map.of(
+                    "usedCount", usedCount,
+                    "limit", limit,
+                    "remaining", Math.max(0, limit - usedCount),
+                    "planId", user.getPlanId()
+            ));
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body(Map.of("error", e.getMessage()));
         }
     }
 }

@@ -50,8 +50,10 @@ export default function App() {
     return (
       <CameraScreen
         onNavigateToReview={() => setScreen('review')}
+        onBack={() => setScreen('review')} // ★ 追加
         userId={user?.userId ?? ''}
         token={user?.token ?? ''}
+        planId={user?.planId}
       />
     );
   }

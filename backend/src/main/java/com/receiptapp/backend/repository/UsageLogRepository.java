@@ -1,6 +1,7 @@
 package com.receiptapp.backend.repository;
 
 import com.receiptapp.backend.entity.UsageLog;
+import com.receiptapp.backend.entity.User;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -25,4 +26,6 @@ public interface UsageLogRepository extends JpaRepository<UsageLog, Long> {
             @Param("userId") String userId,
             @Param("yearMonth") String yearMonth
     );
+
+    long countByUserAndCreatedAtAfter(User user, java.time.LocalDateTime dateTime);
 }
